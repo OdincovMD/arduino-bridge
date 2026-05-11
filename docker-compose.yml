@@ -1,0 +1,46 @@
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: arduino-bridge-nginx
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+
+  backend:
+    build:
+      context: ./server
+    container_name: arduino-bridge-backend
+    env_file:
+      - ./server/.env.example
+    depends_on:
+      db:
+        condition: service_healthy
+    expose:
+      - "8000"
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    container_name: arduino-bridge-db
+    environment:
+      POSTGRES_DB: arduino_bridge
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d arduino_bridge"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:

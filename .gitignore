@@ -1,0 +1,15 @@
+.DS_Store
+*.pyc
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+
+.vscode/
+.idea/
+
+firmware/.pio/
+firmware/.vscode/
+
+server/.env
+server/data/
+postgres_data/
