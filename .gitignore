@@ -13,3 +13,4 @@ firmware/.vscode/
 server/.env
 server/data/
 postgres_data/
+.gitnexus
