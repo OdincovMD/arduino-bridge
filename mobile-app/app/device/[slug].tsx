@@ -1,26 +1,29 @@
-import { Stack, useLocalSearchParams } from 'expo-router';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { Stack, router, useLocalSearchParams } from 'expo-router';
+import { Image } from 'expo-image';
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 
-import { DeviceStatusPill } from '@/components/device-status-pill';
-import { SectionCard } from '@/components/section-card';
-import { StatTile } from '@/components/stat-tile';
-import { Colors, Fonts } from '@/constants/theme';
+import { bloomAssets } from '@/constants/bloom-assets';
+import { bloomPalette } from '@/constants/bloom';
+import { bloomDemoPlants } from '@/constants/bloom-demo';
+import { Fonts } from '@/constants/theme';
 import { useBackendSnapshot } from '@/hooks/use-backend-snapshot';
-import { useColorScheme } from '@/hooks/use-color-scheme';
 import { EnqueueCommandPayload, enqueueDeviceCommand } from '@/lib/api';
 import { useAuth } from '@/providers/auth-provider';
 
 export default function DeviceDetailScreen() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
-  const colorScheme = useColorScheme() ?? 'dark';
-  const palette = Colors[colorScheme];
   const snapshot = useBackendSnapshot();
   const { token } = useAuth();
   const device = snapshot.devices.find((entry) => entry.slug === slug);
   const [sendingCommand, setSendingCommand] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
-  const needsWaterNow = device?.plants.filter((plant) => plant.levelPercent < 35).length ?? 0;
+  const firstPlant = device?.plants[0];
+  const displayPlant = firstPlant ?? bloomDemoPlants[0];
+  const descriptionCopy = firstPlant
+    ? `${device?.lastEvent} Keep this plant in a calm, bright corner and keep the root zone evenly hydrated for the healthiest foliage.`
+    : 'A glossy tropical plant that enjoys balanced moisture, bright filtered light and a quick daily foliage check.';
 
   async function handleQuickAction(action: 'light' | 'watering' | 'snapshot') {
     if (!token || !device) {
@@ -45,10 +48,10 @@ export default function DeviceDetailScreen() {
 
     const successLabel =
       action === 'light'
-        ? 'Свет включится в ближайшее обновление.'
+        ? 'Light command queued for the next device heartbeat.'
         : action === 'watering'
-          ? 'Полив запущен. Изменение появится через пару секунд.'
-          : 'Мы обновляем данные по этой теплице.';
+          ? 'Watering started. Updated moisture will appear in a few seconds.'
+          : 'Snapshot refresh requested for this greenhouse.';
 
     setSendingCommand(action);
     setFeedback(null);
@@ -58,7 +61,7 @@ export default function DeviceDetailScreen() {
       setFeedback(successLabel);
       await snapshot.refresh();
     } catch (error) {
-      setFeedback(error instanceof Error ? error.message : 'Не удалось отправить команду');
+      setFeedback(error instanceof Error ? error.message : 'Unable to send the command');
     } finally {
       setSendingCommand(null);
     }
@@ -67,99 +70,197 @@ export default function DeviceDetailScreen() {
   if (!device) {
     return (
       <>
-        <Stack.Screen options={{ title: 'Устройство' }} />
+        <Stack.Screen options={{ headerShown: false }} />
         <View
           style={{
             flex: 1,
+            backgroundColor: bloomPalette.background,
             padding: 24,
             justifyContent: 'center',
-            backgroundColor: palette.background,
           }}
         >
-          <SectionCard title="Устройство не найдено">
-            <Text style={{ color: palette.muted, fontFamily: Fonts.rounded, fontSize: 14, lineHeight: 22 }}>
-              Эта теплица пока недоступна. Вернитесь к списку и попробуйте обновить экран.
-            </Text>
-          </SectionCard>
+          <Text style={{ color: bloomPalette.primaryText, fontFamily: Fonts.serif, fontSize: 28 }}>
+            Plant not found
+          </Text>
+          <Text style={{ color: bloomPalette.mutedText, fontFamily: Fonts.rounded, fontSize: 14, lineHeight: 22 }}>
+            Return to the garden list and refresh the screen.
+          </Text>
         </View>
       </>
     );
   }
 
+  const conditionCards = [
+    {
+      title: 'Water',
+      value: displayPlant.moisture,
+      color: bloomPalette.yellow,
+      icon: 'water-drop' as const,
+    },
+    {
+      title: 'Sunlight',
+      value: device.lightTemplate.replace('Шаблон', 'Template'),
+      color: bloomPalette.purple,
+      icon: 'wb-sunny' as const,
+    },
+    {
+      title: 'Fertilizer',
+      value: displayPlant.mode,
+      color: bloomPalette.coral,
+      icon: 'air' as const,
+    },
+    {
+      title: 'Humidity',
+      value: `${Math.max(32, displayPlant.levelPercent)}%`,
+      color: bloomPalette.orange,
+      icon: 'opacity' as const,
+    },
+  ];
+
   return (
     <>
-      <Stack.Screen options={{ title: device.name }} />
+      <Stack.Screen options={{ headerShown: false }} />
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={{
-          padding: 20,
-          gap: 18,
+          paddingBottom: 28,
         }}
         refreshControl={<RefreshControl refreshing={snapshot.isRefreshing} onRefresh={() => void snapshot.refresh()} />}
-        style={{ flex: 1, backgroundColor: palette.background }}
+        style={{ flex: 1, backgroundColor: bloomPalette.background }}
       >
-        <View
-          style={{
-            borderRadius: 32,
-            backgroundColor: palette.hero,
-            borderWidth: 1,
-            borderColor: palette.lineStrong,
-            padding: 20,
-            gap: 18,
-            boxShadow: `0 22px 48px ${palette.shadow}`,
-          }}
-        >
-          <View
+        <View style={{ height: 302 }}>
+          <Image source={bloomAssets.plantDetailHero} style={{ width: '100%', height: '100%' }} contentFit="cover" />
+          <Pressable
+            onPress={() => router.back()}
             style={{
-              flexDirection: 'row',
-              justifyContent: 'space-between',
+              position: 'absolute',
+              top: 52,
+              left: 20,
+              width: 44,
+              height: 44,
+              borderRadius: 40,
+              backgroundColor: bloomPalette.surface,
               alignItems: 'center',
-              gap: 12,
+              justifyContent: 'center',
             }}
-            >
-            <View style={{ flex: 1, gap: 4 }}>
-              <Text style={{ color: palette.heroMuted, fontFamily: Fonts.rounded, fontSize: 12 }}>
-                Теплица
-              </Text>
-              <Text
-                selectable
-                style={{
-                  color: palette.heroText,
-                  fontFamily: Fonts.serif,
-                  fontSize: 30,
-                }}
-              >
-                {device.name}
-              </Text>
-              <Text style={{ color: palette.heroMuted, fontFamily: Fonts.rounded, fontSize: 13 }}>{device.lastEvent}</Text>
-            </View>
-            <DeviceStatusPill connected={device.connected} inverted />
-          </View>
-
-          <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>
-            <StatTile label="Свет" value={device.lightTemplate} accent />
-            <StatTile label="Растений" value={`${device.plants.length}`} />
-            <StatTile label="Связь" value={device.lastHeartbeat} />
-          </View>
+          >
+            <MaterialIcons name="arrow-back-ios-new" size={18} color={bloomPalette.primaryText} />
+          </Pressable>
         </View>
 
-        {needsWaterNow > 0 ? (
-          <SectionCard title="Требует внимания">
-            <Text style={{ color: palette.text, fontFamily: Fonts.serif, fontSize: 22, lineHeight: 28 }}>
-              {needsWaterNow} {needsWaterNow === 1 ? 'зона выглядит сухой' : 'зоны выглядят сухими'}
+        <View
+          style={{
+            marginTop: -24,
+            borderTopLeftRadius: 30,
+            borderTopRightRadius: 30,
+            backgroundColor: bloomPalette.background,
+            paddingHorizontal: 20,
+            paddingTop: 28,
+            gap: 22,
+          }}
+        >
+          <View style={{ gap: 10 }}>
+            <Text
+              selectable
+              style={{
+                color: bloomPalette.primaryText,
+                fontFamily: Fonts.serif,
+                fontSize: 24,
+                lineHeight: 30,
+              }}
+            >
+              {`${displayPlant.name} · ${device.name}`}
             </Text>
-            <Text style={{ color: palette.muted, fontFamily: Fonts.rounded, fontSize: 14, lineHeight: 22 }}>
-              Вы можете запустить полив прямо сейчас или сначала обновить данные, чтобы проверить свежую влажность.
-            </Text>
-          </SectionCard>
-        ) : null}
+          </View>
 
-        <SectionCard title="Быстрые действия">
-          <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>
+          <View
+            style={{
+              borderBottomWidth: 0.3,
+              borderBottomColor: bloomPalette.mutedText,
+              paddingBottom: 18,
+              gap: 8,
+            }}
+          >
+            <Text style={{ color: bloomPalette.primaryText, fontFamily: Fonts.rounded, fontSize: 14, fontWeight: '500' }}>
+              Description
+            </Text>
+            <Text
+              selectable
+              style={{
+                color: bloomPalette.mutedText,
+                fontFamily: Fonts.rounded,
+                fontSize: 14,
+                lineHeight: 22,
+              }}
+            >
+              {descriptionCopy}
+            </Text>
+          </View>
+
+          <View style={{ gap: 14 }}>
+            <Text style={{ color: bloomPalette.primaryText, fontFamily: Fonts.rounded, fontSize: 14, fontWeight: '500' }}>
+              Favored Conditions
+            </Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 14 }}>
+              {conditionCards.map((item) => (
+                <View
+                  key={item.title}
+                  style={{
+                    width: '47%',
+                    borderRadius: 18,
+                    backgroundColor: bloomPalette.surface,
+                    padding: 14,
+                    gap: 10,
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 50,
+                      height: 50,
+                      borderRadius: 10,
+                      backgroundColor: item.color,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <MaterialIcons name={item.icon} size={24} color={bloomPalette.primaryText} />
+                  </View>
+                  <Text style={{ color: item.color, fontFamily: Fonts.rounded, fontSize: 14 }}>{item.title}</Text>
+                  <Text selectable style={{ color: '#1A3025', fontFamily: Fonts.rounded, fontSize: 13 }}>
+                    {item.value}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
+
+          <Pressable
+            disabled={sendingCommand !== null}
+            onPress={() => {
+              void handleQuickAction('watering');
+            }}
+            style={{
+              borderRadius: 999,
+              backgroundColor: bloomPalette.primary,
+              alignItems: 'center',
+              justifyContent: 'center',
+              paddingVertical: 16,
+              opacity: sendingCommand && sendingCommand !== 'watering' ? 0.68 : 1,
+            }}
+          >
+            {sendingCommand === 'watering' ? (
+              <ActivityIndicator color={bloomPalette.surface} />
+            ) : (
+              <Text style={{ color: bloomPalette.surface, fontFamily: Fonts.rounded, fontSize: 18 }}>
+                Water now
+              </Text>
+            )}
+          </Pressable>
+
+          <View style={{ flexDirection: 'row', gap: 12 }}>
             {[
-              { key: 'light' as const, label: 'Включить свет' },
-              { key: 'watering' as const, label: 'Полить сейчас' },
-              { key: 'snapshot' as const, label: 'Обновить данные' },
+              { key: 'light' as const, label: 'Light' },
+              { key: 'snapshot' as const, label: 'Refresh' },
             ].map((action) => (
               <Pressable
                 key={action.key}
@@ -168,126 +269,42 @@ export default function DeviceDetailScreen() {
                   void handleQuickAction(action.key);
                 }}
                 style={{
-                  flexBasis: '31%',
-                  minWidth: 96,
-                  borderRadius: 20,
-                  backgroundColor: palette.badge,
-                  paddingVertical: 16,
-                  paddingHorizontal: 14,
-                  opacity: sendingCommand && sendingCommand !== action.key ? 0.55 : 1,
+                  flex: 1,
+                  borderRadius: 999,
+                  backgroundColor: bloomPalette.surface,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  paddingVertical: 14,
+                  borderWidth: 1,
+                  borderColor: bloomPalette.border,
                 }}
               >
                 {sendingCommand === action.key ? (
-                  <ActivityIndicator color={palette.text} />
+                  <ActivityIndicator color={bloomPalette.primaryText} />
                 ) : (
-                  <Text
-                    style={{
-                      color: palette.text,
-                      fontFamily: Fonts.rounded,
-                      fontSize: 13,
-                      textAlign: 'center',
-                    }}
-                  >
+                  <Text style={{ color: bloomPalette.primaryText, fontFamily: Fonts.rounded, fontSize: 14 }}>
                     {action.label}
                   </Text>
                 )}
               </Pressable>
             ))}
           </View>
-          <Text style={{ color: palette.muted, fontFamily: Fonts.rounded, fontSize: 13, lineHeight: 20 }}>
-            Выберите нужное действие, и приложение сразу отправит запрос на теплицу.
-          </Text>
+
           {feedback ? (
             <View
               style={{
                 borderRadius: 18,
-                backgroundColor: palette.cardSoft,
+                backgroundColor: bloomPalette.surface,
                 paddingHorizontal: 14,
                 paddingVertical: 12,
               }}
             >
-              <Text style={{ color: palette.text, fontFamily: Fonts.rounded, fontSize: 13, lineHeight: 20 }}>
+              <Text style={{ color: bloomPalette.mutedText, fontFamily: Fonts.rounded, fontSize: 13, lineHeight: 20 }}>
                 {feedback}
               </Text>
             </View>
           ) : null}
-        </SectionCard>
-
-        <SectionCard title="Растения и влажность">
-          <View style={{ gap: 10 }}>
-            {device.plants.map((plant) => (
-              <View
-                key={plant.name}
-                style={{
-                  borderRadius: 22,
-                  borderWidth: 1,
-                  borderColor: palette.line,
-                  backgroundColor: palette.cardSoft,
-                  padding: 16,
-                  gap: 10,
-                }}
-              >
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                  }}
-                >
-                  <View>
-                    <Text style={{ color: palette.text, fontFamily: Fonts.serif, fontSize: 18 }}>
-                      {plant.name}
-                    </Text>
-                    <Text style={{ color: palette.muted, fontFamily: Fonts.rounded, fontSize: 12 }}>
-                      {plant.mode}
-                    </Text>
-                  </View>
-                  <Text
-                    selectable
-                    style={{
-                      color: palette.text,
-                      fontFamily: Fonts.mono,
-                      fontSize: 13,
-                      fontVariant: ['tabular-nums'],
-                    }}
-                  >
-                    {plant.moisture}
-                  </Text>
-                </View>
-                <Text style={{ color: plant.levelPercent > 55 ? palette.accent : palette.warning, fontFamily: Fonts.rounded, fontSize: 12 }}>
-                  {plant.levelPercent > 55
-                    ? 'Запас влаги хороший'
-                    : plant.levelPercent > 35
-                      ? 'Нормальный уровень'
-                      : 'Стоит проверить полив'}
-                </Text>
-                <View
-                  style={{
-                    height: 8,
-                    borderRadius: 999,
-                    backgroundColor: palette.barTrack,
-                    overflow: 'hidden',
-                  }}
-                >
-                  <View
-                    style={{
-                      width: `${Math.max(8, Math.min(100, plant.levelPercent))}%`,
-                      height: '100%',
-                      borderRadius: 999,
-                      backgroundColor: plant.levelPercent > 55 ? palette.accent : palette.warning,
-                    }}
-                  />
-                </View>
-              </View>
-            ))}
-          </View>
-        </SectionCard>
-
-        <SectionCard title="Что было недавно">
-          <Text selectable style={{ color: palette.text, fontFamily: Fonts.rounded, fontSize: 14, lineHeight: 22 }}>
-            {device.lastEvent}
-          </Text>
-        </SectionCard>
+        </View>
       </ScrollView>
     </>
   );
