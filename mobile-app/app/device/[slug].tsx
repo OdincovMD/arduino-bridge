@@ -22,8 +22,8 @@ export default function DeviceDetailScreen() {
   const firstPlant = device?.plants[0];
   const displayPlant = firstPlant ?? bloomDemoPlants[0];
   const descriptionCopy = firstPlant
-    ? `${device?.lastEvent} Keep this plant in a calm, bright corner and keep the root zone evenly hydrated for the healthiest foliage.`
-    : 'A glossy tropical plant that enjoys balanced moisture, bright filtered light and a quick daily foliage check.';
+    ? `${device?.lastEvent} Контур работает в режиме "${displayPlant.mode.toLowerCase()}". Проверьте влажность и при необходимости отправьте ручную команду без выхода из экрана.`
+    : 'Контур ожидает первый live snapshot. Пока можно проверить связь, шаблон света и доступность ручного полива.';
 
   async function handleQuickAction(action: 'light' | 'watering' | 'snapshot') {
     if (!token || !device) {
@@ -48,10 +48,10 @@ export default function DeviceDetailScreen() {
 
     const successLabel =
       action === 'light'
-        ? 'Light command queued for the next device heartbeat.'
+        ? 'Команда света поставлена в очередь для этого контроллера.'
         : action === 'watering'
-          ? 'Watering started. Updated moisture will appear in a few seconds.'
-          : 'Snapshot refresh requested for this greenhouse.';
+          ? 'Ручной полив отправлен. Обновление влажности появится после ack.'
+          : 'Запрошен новый snapshot по текущему контуру.';
 
     setSendingCommand(action);
     setFeedback(null);
@@ -80,10 +80,10 @@ export default function DeviceDetailScreen() {
           }}
         >
           <Text style={{ color: bloomPalette.primaryText, fontFamily: Fonts.serif, fontSize: 28 }}>
-            Plant not found
+            Контур не найден
           </Text>
           <Text style={{ color: bloomPalette.mutedText, fontFamily: Fonts.rounded, fontSize: 14, lineHeight: 22 }}>
-            Return to the garden list and refresh the screen.
+            Вернитесь к списку зон и обновите экран.
           </Text>
         </View>
       </>
@@ -92,28 +92,28 @@ export default function DeviceDetailScreen() {
 
   const conditionCards = [
     {
-      title: 'Water',
+      title: 'Влажность',
       value: displayPlant.moisture,
       color: bloomPalette.yellow,
       icon: 'water-drop' as const,
     },
     {
-      title: 'Sunlight',
-      value: device.lightTemplate.replace('Шаблон', 'Template'),
+      title: 'Свет',
+      value: device.lightTemplate.replace('Шаблон', 'Профиль'),
       color: bloomPalette.purple,
       icon: 'wb-sunny' as const,
     },
     {
-      title: 'Fertilizer',
+      title: 'Режим',
       value: displayPlant.mode,
       color: bloomPalette.coral,
-      icon: 'air' as const,
+      icon: 'tune' as const,
     },
     {
-      title: 'Humidity',
-      value: `${Math.max(32, displayPlant.levelPercent)}%`,
+      title: 'Связь',
+      value: device.lastHeartbeat,
       color: bloomPalette.orange,
-      icon: 'opacity' as const,
+      icon: 'sensors' as const,
     },
   ];
 
@@ -171,6 +171,38 @@ export default function DeviceDetailScreen() {
             >
               {`${displayPlant.name} · ${device.name}`}
             </Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              <View
+                style={{
+                  borderRadius: 999,
+                  backgroundColor: device.connected ? '#EAF4EA' : '#FFF0EF',
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                }}
+              >
+                <Text
+                  style={{
+                    color: device.connected ? bloomPalette.primary : bloomPalette.warning,
+                    fontFamily: Fonts.rounded,
+                    fontSize: 11,
+                  }}
+                >
+                  {device.connected ? 'На связи' : 'Оффлайн'}
+                </Text>
+              </View>
+              <View
+                style={{
+                  borderRadius: 999,
+                  backgroundColor: bloomPalette.surfaceMuted,
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                }}
+              >
+                <Text style={{ color: bloomPalette.primaryText, fontFamily: Fonts.rounded, fontSize: 11 }}>
+                  {device.pendingCommands} команд в очереди
+                </Text>
+              </View>
+            </View>
           </View>
 
           <View
@@ -182,7 +214,7 @@ export default function DeviceDetailScreen() {
             }}
           >
             <Text style={{ color: bloomPalette.primaryText, fontFamily: Fonts.rounded, fontSize: 14, fontWeight: '500' }}>
-              Description
+              Статус контура
             </Text>
             <Text
               selectable
@@ -199,7 +231,7 @@ export default function DeviceDetailScreen() {
 
           <View style={{ gap: 14 }}>
             <Text style={{ color: bloomPalette.primaryText, fontFamily: Fonts.rounded, fontSize: 14, fontWeight: '500' }}>
-              Favored Conditions
+              Оперативные параметры
             </Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 14 }}>
               {conditionCards.map((item) => (
@@ -252,15 +284,15 @@ export default function DeviceDetailScreen() {
               <ActivityIndicator color={bloomPalette.surface} />
             ) : (
               <Text style={{ color: bloomPalette.surface, fontFamily: Fonts.rounded, fontSize: 18 }}>
-                Water now
+                Запустить полив
               </Text>
             )}
           </Pressable>
 
           <View style={{ flexDirection: 'row', gap: 12 }}>
             {[
-              { key: 'light' as const, label: 'Light' },
-              { key: 'snapshot' as const, label: 'Refresh' },
+              { key: 'light' as const, label: 'Включить свет' },
+              { key: 'snapshot' as const, label: 'Обновить снимок' },
             ].map((action) => (
               <Pressable
                 key={action.key}

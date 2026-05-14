@@ -24,9 +24,13 @@ export default function DevicesScreen() {
           ...plant,
           slug: device.slug,
           deviceName: device.name,
+          pendingCommands: device.pendingCommands,
+          lightTemplate: device.lightTemplate,
+          connected: device.connected,
+          heartbeat: device.lastHeartbeat,
           image: bloomAssets.gardenPlants[(deviceIndex + index) % bloomAssets.gardenPlants.length],
           status:
-            plant.levelPercent < 35 ? 'Need Attention' : plant.levelPercent < 55 ? 'Healthy' : 'Ready to harvest',
+            plant.levelPercent < 35 ? 'Нужна проверка' : plant.levelPercent < 55 ? 'Рабочая зона' : 'Стабильный контур',
         }))
       ),
     [snapshot.devices]
@@ -40,14 +44,21 @@ export default function DevicesScreen() {
         deviceName:
           snapshot.devices[index % Math.max(snapshot.devices.length, 1)]?.name ??
           bloomDemoFeed[index % bloomDemoFeed.length].name,
+        pendingCommands: snapshot.devices[index % Math.max(snapshot.devices.length, 1)]?.pendingCommands ?? 0,
+        lightTemplate: snapshot.devices[index % Math.max(snapshot.devices.length, 1)]?.lightTemplate ?? 'Утренний цикл',
+        connected: snapshot.devices[index % Math.max(snapshot.devices.length, 1)]?.connected ?? true,
+        heartbeat: snapshot.devices[index % Math.max(snapshot.devices.length, 1)]?.lastHeartbeat ?? 'online',
         image: bloomAssets.gardenPlants[index % bloomAssets.gardenPlants.length],
+        status: plant.levelPercent < 35 ? 'Нужна проверка' : 'Рабочая зона',
       }));
 
-  const scheduleCards = visualPlantCards.slice(0, 3).map((plant, index) => ({
+  const scheduleCards = visualPlantCards.slice(0, 4).map((plant, index) => ({
     title: plant.name,
     greenhouse: plant.deviceName,
-    time: ['09.00 A.M.', '01.30 P.M.', '06.00 P.M.'][index] ?? '09.00 A.M.',
-    repeat: index === 1 ? 'Every Week' : 'Every Day',
+    time: ['09:00', '13:30', '18:00', '21:15'][index] ?? '09:00',
+    repeat: index === 1 ? 'Каждую неделю' : 'Каждый день',
+    action: index % 2 === 0 ? 'Полив' : 'Свет',
+    profile: plant.lightTemplate,
   }));
 
   return (
@@ -91,9 +102,16 @@ export default function DevicesScreen() {
             fontSize: 18,
           }}
         >
-          My Garden
+          Зоны теплицы
         </Text>
         <View style={{ width: 44 }} />
+      </View>
+
+      <View style={{ gap: 6 }}>
+        <Text style={{ color: bloomPalette.primaryText, fontFamily: Fonts.serif, fontSize: 28 }}>Контуры и расписания</Text>
+        <Text style={{ color: bloomPalette.mutedText, fontFamily: Fonts.rounded, fontSize: 13, lineHeight: 19 }}>
+          Переключайтесь между зонами и графиком, чтобы быстро понять, где работает автоматический полив, а где нужна ручная команда.
+        </Text>
       </View>
 
       <View
@@ -121,7 +139,7 @@ export default function DevicesScreen() {
               fontSize: 14,
             }}
           >
-            My Plants
+            Зоны
           </Text>
         </Pressable>
         <Pressable
@@ -141,14 +159,14 @@ export default function DevicesScreen() {
               fontSize: 14,
             }}
           >
-            Schedule
+            Расписание
           </Text>
         </Pressable>
       </View>
 
       {mode === 'plants' ? (
         <View style={{ gap: 14 }}>
-          {visualPlantCards.slice(0, 5).map((plant) => (
+          {visualPlantCards.slice(0, 6).map((plant) => (
             <Link key={`${plant.slug}-${plant.name}`} href={`/device/${plant.slug}`} asChild>
               <Pressable
                 style={{
@@ -176,7 +194,7 @@ export default function DevicesScreen() {
                   <Image source={plant.image} style={{ width: 56, height: 58 }} contentFit="contain" />
                 </View>
 
-                <View style={{ flex: 1, gap: 4 }}>
+                <View style={{ flex: 1, gap: 5 }}>
                   <Text
                     selectable
                     style={{
@@ -187,33 +205,61 @@ export default function DevicesScreen() {
                   >
                     {plant.name}
                   </Text>
-                  <Text style={{ color: plant.levelPercent < 35 ? bloomPalette.warning : bloomPalette.mutedText, fontFamily: Fonts.rounded, fontSize: 13 }}>
+                  <Text
+                    style={{
+                      color: plant.levelPercent < 35 ? bloomPalette.warning : bloomPalette.mutedText,
+                      fontFamily: Fonts.rounded,
+                      fontSize: 13,
+                    }}
+                  >
                     {plant.status}
                   </Text>
-                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                  <Text style={{ color: bloomPalette.mutedSoft, fontFamily: Fonts.rounded, fontSize: 12 }}>
+                    {plant.deviceName} • {plant.heartbeat}
+                  </Text>
+
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
                     <View
                       style={{
-                        width: 22,
-                        height: 22,
                         borderRadius: 999,
                         backgroundColor: '#ECF5ED',
-                        alignItems: 'center',
-                        justifyContent: 'center',
+                        paddingHorizontal: 10,
+                        paddingVertical: 6,
                       }}
                     >
-                      <MaterialIcons name="water-drop" size={12} color={bloomPalette.primary} />
+                      <Text style={{ color: bloomPalette.primaryText, fontFamily: Fonts.rounded, fontSize: 11 }}>
+                        {plant.moisture}
+                      </Text>
                     </View>
                     <View
                       style={{
-                        width: 22,
-                        height: 22,
                         borderRadius: 999,
-                        backgroundColor: '#ECF5ED',
-                        alignItems: 'center',
-                        justifyContent: 'center',
+                        backgroundColor: bloomPalette.surfaceMuted,
+                        paddingHorizontal: 10,
+                        paddingVertical: 6,
                       }}
                     >
-                      <MaterialIcons name="air" size={12} color={bloomPalette.primary} />
+                      <Text style={{ color: bloomPalette.primaryText, fontFamily: Fonts.rounded, fontSize: 11 }}>
+                        {plant.mode}
+                      </Text>
+                    </View>
+                    <View
+                      style={{
+                        borderRadius: 999,
+                        backgroundColor: plant.connected ? '#EAF4EA' : '#FFF0EF',
+                        paddingHorizontal: 10,
+                        paddingVertical: 6,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: plant.connected ? bloomPalette.primary : bloomPalette.warning,
+                          fontFamily: Fonts.rounded,
+                          fontSize: 11,
+                        }}
+                      >
+                        {plant.pendingCommands} в очереди
+                      </Text>
                     </View>
                   </View>
                 </View>
@@ -253,7 +299,7 @@ export default function DevicesScreen() {
           </View>
 
           <Text style={{ color: bloomPalette.primaryText, fontFamily: Fonts.rounded, fontSize: 18 }}>
-            {selectedDay === 'Wed' ? 'Wednesday' : selectedDay}
+            {selectedDay === 'Wed' ? 'Среда' : selectedDay}
           </Text>
 
           <View style={{ gap: 14 }}>
@@ -268,7 +314,7 @@ export default function DevicesScreen() {
                 }}
               >
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <View style={{ gap: 4 }}>
+                  <View style={{ gap: 4, flex: 1, paddingRight: 12 }}>
                     <Text style={{ color: bloomPalette.primary, fontFamily: Fonts.serif, fontSize: 18 }}>
                       {item.title}
                     </Text>
@@ -280,7 +326,7 @@ export default function DevicesScreen() {
                     {item.time}
                   </Text>
                 </View>
-                <View style={{ flexDirection: 'row', gap: 8 }}>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                   <View
                     style={{
                       borderRadius: 999,
@@ -302,7 +348,19 @@ export default function DevicesScreen() {
                     }}
                   >
                     <Text style={{ color: bloomPalette.primaryText, fontFamily: Fonts.rounded, fontSize: 12 }}>
-                      Watering
+                      {item.action}
+                    </Text>
+                  </View>
+                  <View
+                    style={{
+                      borderRadius: 999,
+                      backgroundColor: '#ECF5ED',
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                    }}
+                  >
+                    <Text style={{ color: bloomPalette.primaryText, fontFamily: Fonts.rounded, fontSize: 12 }}>
+                      {item.profile}
                     </Text>
                   </View>
                 </View>
@@ -322,7 +380,7 @@ export default function DevicesScreen() {
                 boxShadow: `0 12px 26px ${bloomPalette.shadow}`,
               }}
             >
-              <MaterialIcons name="add" size={24} color={bloomPalette.surface} />
+              <MaterialIcons name="edit-calendar" size={22} color={bloomPalette.surface} />
             </View>
           </View>
         </>

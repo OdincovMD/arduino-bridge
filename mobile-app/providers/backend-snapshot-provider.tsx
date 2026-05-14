@@ -55,6 +55,10 @@ function parseKeyValuePayload(payload: string): Record<string, string> {
 }
 
 function describeEventTitle(deviceName: string): string {
+  if (deviceName === 'Greenhouse Controller') {
+    return 'Северная теплица';
+  }
+
   return deviceName;
 }
 
@@ -128,6 +132,7 @@ export function BackendSnapshotProvider({ children }: { children: ReactNode }) {
       const mappedDevices = devices.map((device, index) => {
         const lightBlock = device.snapshot_light ?? {};
         const plantMap = device.snapshot_plants ?? {};
+        const deviceName = device.name === 'Greenhouse Controller' ? 'Северная теплица' : device.name;
         const plants = Object.entries(plantMap).map(([plantIndex, plant]) => {
           const moistureValue = Number(plant.MOISTURE ?? 0);
           return {
@@ -148,11 +153,11 @@ export function BackendSnapshotProvider({ children }: { children: ReactNode }) {
         const lastEvent = commandBundle?.events[0]
           ? describeEventPayload(commandBundle.events[0].event_name, commandBundle.events[0].payload)
           : 'Пока всё спокойно.';
-        const lightTemplate = lightBlock.TEMPLATE ?? lightBlock.LTPL ?? `Шаблон ${index + 1}`;
+        const lightTemplate = lightBlock.TEMPLATE ?? lightBlock.LTPL ?? `Профиль ${index + 1}`;
 
         return {
           slug: device.slug,
-          name: device.name,
+          name: deviceName,
           connected: Boolean(device.last_seen_at),
           plantsOnline: plants.length,
           pendingCommands,

@@ -1,7 +1,9 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { Image } from 'expo-image';
 import { ReactNode, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
+import { bloomAssets } from '@/constants/bloom-assets';
 import { bloomPalette } from '@/constants/bloom';
 import { Fonts } from '@/constants/theme';
 import { useAuth } from '@/providers/auth-provider';
@@ -74,7 +76,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
             textAlign: 'center',
           }}
         >
-          Hello Again!
+          Панель теплицы
         </Text>
         <Text
           selectable
@@ -87,8 +89,34 @@ export function AuthGate({ children }: { children: ReactNode }) {
             maxWidth: 320,
           }}
         >
-          Welcome back. Your greenhouse data, watering cues and light controls are ready.
+          Войдите, чтобы видеть свет, полив, очередь команд и телеметрию контроллеров в одном месте.
         </Text>
+      </View>
+
+      <View
+        style={{
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginTop: -4,
+          marginBottom: -6,
+        }}
+      >
+        <View
+          style={{
+            width: 172,
+            height: 172,
+            borderRadius: 999,
+            backgroundColor: 'rgba(255,255,255,0.42)',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Image
+            source={bloomAssets.gardenPlants[0]}
+            style={{ width: 142, height: 142 }}
+            contentFit="contain"
+          />
+        </View>
       </View>
 
       <View
@@ -103,7 +131,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
       >
         <View style={{ gap: 8 }}>
           <Text style={{ color: bloomPalette.primaryText, fontFamily: Fonts.rounded, fontSize: 14, fontWeight: '500' }}>
-            Email Address
+            Почта оператора
           </Text>
           <TextInput
             autoCapitalize="none"
@@ -128,7 +156,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
         <View style={{ gap: 8 }}>
           <Text style={{ color: bloomPalette.primaryText, fontFamily: Fonts.rounded, fontSize: 14, fontWeight: '500' }}>
-            Password
+            Пароль
           </Text>
           <TextInput
             secureTextEntry
@@ -150,14 +178,14 @@ export function AuthGate({ children }: { children: ReactNode }) {
         </View>
 
         <Text
-          style={{
-            alignSelf: 'flex-end',
-            color: bloomPalette.mutedText,
-            fontFamily: Fonts.rounded,
-            fontSize: 13,
-          }}
-        >
-          Recovery Password
+            style={{
+              alignSelf: 'flex-end',
+              color: bloomPalette.mutedText,
+              fontFamily: Fonts.rounded,
+              fontSize: 13,
+            }}
+          >
+          Восстановить доступ
         </Text>
 
         {error ? (
@@ -193,7 +221,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
             <ActivityIndicator color={bloomPalette.surface} />
           ) : (
             <Text style={{ color: bloomPalette.surface, fontFamily: Fonts.rounded, fontSize: 16, fontWeight: '600' }}>
-              Sign In
+              Войти
             </Text>
           )}
         </Pressable>
@@ -207,8 +235,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
           textAlign: 'center',
         }}
       >
-        Don’t have an account?{' '}
-        <Text style={{ color: bloomPalette.primary, fontFamily: Fonts.rounded, fontWeight: '600' }}>Sign Up for free</Text>
+        Тестовый доступ использует backend-учётную запись администратора.
       </Text>
     </ScrollView>
   );

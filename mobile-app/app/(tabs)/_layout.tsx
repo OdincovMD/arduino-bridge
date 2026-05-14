@@ -18,25 +18,25 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
+          title: 'Пульт',
         }}
       />
       <Tabs.Screen
         name="devices"
         options={{
-          title: 'My Garden',
+          title: 'Зоны',
         }}
       />
       <Tabs.Screen
         name="activity"
         options={{
-          title: 'Dashboard',
+          title: 'Пульс',
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
-          title: 'Settings',
+          title: 'Профиль',
         }}
       />
     </Tabs>

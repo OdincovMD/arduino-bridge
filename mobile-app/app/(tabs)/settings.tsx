@@ -54,9 +54,9 @@ export default function SettingsScreen() {
   const { user, signOut } = useAuth();
   const snapshot = useBackendSnapshot();
   const updatedLabel = snapshot.updatedLabel
-    .replace('обновлено в ', 'updated at ')
-    .replace('резервные данные', 'fallback data')
-    .replace('демо-режим', 'demo mode');
+    .replace('обновлено в ', 'обновлено в ')
+    .replace('резервные данные', 'резервные данные')
+    .replace('демо-режим', 'демо-режим');
 
   return (
     <ScrollView
@@ -99,7 +99,7 @@ export default function SettingsScreen() {
             fontWeight: '500',
           }}
         >
-          Settings
+          Профиль оператора
         </Text>
         <View style={{ width: 46 }} />
       </View>
@@ -113,12 +113,12 @@ export default function SettingsScreen() {
             fontWeight: '600',
           }}
         >
-          Account Setting
+          Управление доступом
         </Text>
         <View style={{ gap: 15 }}>
-          <SettingsRow icon="edit" label={user?.email ?? 'Edit profile'} />
-          <SettingsRow icon="translate" label="Change language" />
-          <SettingsRow icon="verified-user" label="Privacy" />
+          <SettingsRow icon="badge" label={user?.email ?? 'Оператор не авторизован'} />
+          <SettingsRow icon="vpn-key" label="Сменить пароль backend" />
+          <SettingsRow icon="translate" label="Язык интерфейса" />
         </View>
       </View>
 
@@ -131,12 +131,12 @@ export default function SettingsScreen() {
             fontWeight: '600',
           }}
         >
-          Legal
+          Документация и политика
         </Text>
         <View style={{ gap: 15 }}>
-          <SettingsRow icon="description" label="Terms and Condition" external />
-          <SettingsRow icon="shield" label="Privacy policy" external />
-          <SettingsRow icon="info-outline" label="Help" external />
+          <SettingsRow icon="description" label="Протокол обмена" external />
+          <SettingsRow icon="shield" label="Политика доступа" external />
+          <SettingsRow icon="info-outline" label="Помощь оператору" external />
         </View>
       </View>
 
@@ -150,14 +150,19 @@ export default function SettingsScreen() {
           borderColor: bloomPalette.border,
         }}
       >
-        <Text style={{ color: bloomPalette.darkText, fontFamily: Fonts.rounded, fontSize: 13 }}>Operator</Text>
+        <Text style={{ color: bloomPalette.darkText, fontFamily: Fonts.rounded, fontSize: 13 }}>Backend session</Text>
         <Text selectable style={{ color: bloomPalette.primaryText, fontFamily: Fonts.rounded, fontSize: 18, fontWeight: '600' }}>
-          {user?.email ?? 'Not signed in'}
+          {user?.email ?? 'Вход не выполнен'}
         </Text>
         <Text style={{ color: bloomPalette.mutedText, fontFamily: Fonts.rounded, fontSize: 13 }}>
-          Snapshot: {snapshot.source === 'remote' ? 'Live backend sync' : 'Fallback demo data'}
+          Источник snapshot: {snapshot.source === 'remote' ? 'живой backend' : 'fallback demo data'}
         </Text>
-        <Text style={{ color: bloomPalette.mutedText, fontFamily: Fonts.rounded, fontSize: 13 }}>Last update: {updatedLabel}</Text>
+        <Text style={{ color: bloomPalette.mutedText, fontFamily: Fonts.rounded, fontSize: 13 }}>
+          Последнее обновление: {updatedLabel}
+        </Text>
+        <Text style={{ color: bloomPalette.mutedText, fontFamily: Fonts.rounded, fontSize: 13 }}>
+          Активных контроллеров: {snapshot.devices.filter((device) => device.connected).length}/{snapshot.devices.length}
+        </Text>
       </View>
 
       <View style={{ alignItems: 'center', gap: 18 }}>
@@ -183,7 +188,7 @@ export default function SettingsScreen() {
               textDecorationLine: 'underline',
             }}
           >
-            Logout
+            Выйти из сессии
           </Text>
         </Pressable>
         <Text style={{ color: 'rgba(0,0,0,0.6)', fontFamily: Fonts.rounded, fontSize: 12 }}>Version 1.0.0</Text>

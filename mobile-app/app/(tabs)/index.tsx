@@ -2,13 +2,16 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Link } from 'expo-router';
 import { Image } from 'expo-image';
 import { StatusBar } from 'expo-status-bar';
-import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 
 import { bloomAssets } from '@/constants/bloom-assets';
 import { bloomPalette } from '@/constants/bloom';
 import { bloomDemoFeed, bloomDemoPlants, bloomDemoStats } from '@/constants/bloom-demo';
 import { Fonts } from '@/constants/theme';
 import { useBackendSnapshot } from '@/hooks/use-backend-snapshot';
+import { EnqueueCommandPayload, enqueueDeviceCommand } from '@/lib/api';
+import { useAuth } from '@/providers/auth-provider';
 
 function percentageAverage(values: number[]) {
   if (!values.length) {
@@ -20,7 +23,10 @@ function percentageAverage(values: number[]) {
 
 export default function OverviewScreen() {
   const snapshot = useBackendSnapshot();
+  const { token } = useAuth();
   const primaryDevice = snapshot.devices[0];
+  const [sendingCommand, setSendingCommand] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<string | null>(null);
   const plants = snapshot.devices.flatMap((device) =>
     device.plants.map((plant, index) => ({
       ...plant,
@@ -28,6 +34,7 @@ export default function OverviewScreen() {
       image: bloomAssets.gardenPlants[index % bloomAssets.gardenPlants.length],
     }))
   );
+
   const fallbackSlug = primaryDevice?.slug ?? bloomDemoFeed[0].slug;
   const visualPlants = plants.length
     ? plants
@@ -44,7 +51,9 @@ export default function OverviewScreen() {
   const moisture = plants.length
     ? percentageAverage(plants.map((plant) => plant.levelPercent))
     : bloomDemoStats.moisture;
+  const pendingCommands = snapshot.devices.reduce((sum, device) => sum + device.pendingCommands, 0);
   const feedCards = (snapshot.devices.length ? snapshot.devices : []).slice(0, 3);
+
   while (feedCards.length < 3) {
     const fallback = bloomDemoFeed[feedCards.length];
     if (!fallback) {
@@ -61,31 +70,75 @@ export default function OverviewScreen() {
       plants: [],
     });
   }
+
+  async function handleQuickAction(action: 'light' | 'watering' | 'snapshot') {
+    if (!token || !primaryDevice) {
+      setFeedback('Сначала авторизуйтесь и дождитесь загрузки активной стойки.');
+      return;
+    }
+
+    const payload: EnqueueCommandPayload =
+      action === 'light'
+        ? {
+            command_name: 'LIGHT_MANUAL',
+            args: { STATE: 'ON', PRIORITY: 'HIGH', DURATION: '1800' },
+          }
+        : action === 'watering'
+          ? {
+              command_name: 'WATERING_PULSE',
+              args: { PLANT: '0', DURATION: '12' },
+            }
+          : {
+              command_name: 'GET_SNAPSHOT',
+              args: {},
+            };
+
+    const successLabel =
+      action === 'light'
+        ? 'Команда света поставлена в очередь до ближайшего heartbeat.'
+        : action === 'watering'
+          ? 'Импульс полива отправлен. Снимок обновится после подтверждения контроллера.'
+          : 'Запрошен свежий snapshot состояния активной стойки.';
+
+    setSendingCommand(action);
+    setFeedback(null);
+
+    try {
+      await enqueueDeviceCommand(token, primaryDevice.slug, payload);
+      setFeedback(successLabel);
+      await snapshot.refresh();
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : 'Не удалось отправить команду');
+    } finally {
+      setSendingCommand(null);
+    }
+  }
+
   const spotlightHref = (primaryDevice ? `/device/${primaryDevice.slug}` : '/devices') as never;
-  const featureCards = [
+  const operationalCards = [
     {
-      title: 'Diagnose',
-      description: 'Open any greenhouse, review plant health and trigger fast watering actions.',
-      href: '/devices' as never,
-      image: bloomAssets.gardenPlants[2],
+      title: 'Шаблон света',
+      value: primaryDevice?.lightTemplate ?? 'Нет данных',
+      description: 'Текущий профиль освещения для активной стойки.',
+      icon: 'wb-sunny' as const,
     },
     {
-      title: 'Identify',
-      description: 'Track which zones are stable and which plants need a fresh look.',
-      href: '/devices' as never,
-      image: bloomAssets.gardenPlants[3],
+      title: 'Зон на связи',
+      value: `${liveDevices}`,
+      description: 'Контроллеры, которые ответили последним heartbeat.',
+      icon: 'sensors' as const,
     },
     {
-      title: 'IOT Watering',
-      description: 'See aggregate moisture signals before you send commands to the rack.',
-      href: spotlightHref,
-      image: bloomAssets.gardenPlants[4],
+      title: 'Требуют внимания',
+      value: `${needsAttention}`,
+      description: 'Контуры с влажностью ниже рабочего порога.',
+      icon: 'warning-amber' as const,
     },
     {
-      title: 'Reminders',
-      description: 'Keep your care flow tidy with a schedule view and live activity summary.',
-      href: '/activity' as never,
-      image: bloomAssets.gardenPlants[1],
+      title: 'Очередь команд',
+      value: `${pendingCommands}`.padStart(2, '0'),
+      description: 'Команды ждут выдачи при следующем цикле связи.',
+      icon: 'bolt' as const,
     },
   ];
 
@@ -115,7 +168,7 @@ export default function OverviewScreen() {
             borderBottomRightRadius: 36,
           }}
         >
-          <Image source={bloomAssets.homeHero} style={{ width: '100%', height: '100%' }} contentFit="cover" />
+          <Image source={bloomAssets.plantDetailHero} style={{ width: '100%', height: '100%' }} contentFit="cover" />
           <View
             style={{
               position: 'absolute',
@@ -157,7 +210,7 @@ export default function OverviewScreen() {
                 fontSize: 12,
               }}
             >
-              Your location
+              Активная площадка
             </Text>
             <Text
               selectable
@@ -167,7 +220,7 @@ export default function OverviewScreen() {
                 fontSize: 15,
               }}
             >
-              {primaryDevice?.name ?? 'Greenhouse network'}
+              {primaryDevice?.name ?? 'Тепличный контур'}
             </Text>
           </View>
 
@@ -214,7 +267,7 @@ export default function OverviewScreen() {
           >
             <MaterialIcons name="search" size={22} color={bloomPalette.mutedText} />
             <Text style={{ color: bloomPalette.mutedText, fontFamily: Fonts.rounded, fontSize: 14 }}>
-              Search plants & flowers
+              Найти стойку, зону или режим
             </Text>
           </Pressable>
         </Link>
@@ -232,7 +285,7 @@ export default function OverviewScreen() {
             boxShadow: `0 16px 30px ${bloomPalette.shadow}`,
           }}
         >
-          <View style={{ gap: 3 }}>
+          <View style={{ gap: 3, flex: 1, paddingRight: 16 }}>
             <Text
               selectable
               style={{
@@ -245,21 +298,38 @@ export default function OverviewScreen() {
               {moisture}%
             </Text>
             <Text style={{ color: bloomPalette.primaryText, fontFamily: Fonts.rounded, fontSize: 14 }}>
-              Average moisture
+              Средняя влажность по живым зонам
             </Text>
             <Text style={{ color: bloomPalette.mutedText, fontFamily: Fonts.rounded, fontSize: 14 }}>
-              {liveDevices} live racks, {needsAttention} zones need attention
+              {liveDevices} контроллера на связи, {pendingCommands} команд в очереди
             </Text>
           </View>
-          <View
-            style={{
-              width: 82,
-              height: 62,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <MaterialIcons name="thunderstorm" size={46} color={bloomPalette.yellow} />
+
+          <View style={{ width: 92, gap: 10 }}>
+            <View
+              style={{
+                borderRadius: 18,
+                backgroundColor: bloomPalette.surfaceSoft,
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+              }}
+            >
+              <Text style={{ color: bloomPalette.mutedText, fontFamily: Fonts.rounded, fontSize: 12 }}>Порог</Text>
+              <Text style={{ color: bloomPalette.primaryText, fontFamily: Fonts.serif, fontSize: 18 }}>35%</Text>
+            </View>
+            <View
+              style={{
+                borderRadius: 18,
+                backgroundColor: bloomPalette.surfaceSoft,
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+              }}
+            >
+              <Text style={{ color: bloomPalette.mutedText, fontFamily: Fonts.rounded, fontSize: 12 }}>Риск</Text>
+              <Text style={{ color: bloomPalette.warning, fontFamily: Fonts.serif, fontSize: 18 }}>
+                {needsAttention}
+              </Text>
+            </View>
           </View>
         </View>
 
@@ -341,7 +411,7 @@ export default function OverviewScreen() {
                 lineHeight: 30,
               }}
             >
-              Check your plant
+              Командный центр
             </Text>
             <Text
               selectable
@@ -352,7 +422,7 @@ export default function OverviewScreen() {
                 lineHeight: 19,
               }}
             >
-              Open the main rack, scan moisture levels, review the latest event and send watering in one tap.
+              Откройте активную стойку, проверьте последний event, шаблон света и запустите ручной полив в один тап.
             </Text>
             <Link href={spotlightHref} asChild>
               <Pressable
@@ -364,64 +434,159 @@ export default function OverviewScreen() {
                   paddingVertical: 10,
                 }}
               >
-                <Text style={{ color: bloomPalette.surface, fontFamily: Fonts.rounded, fontSize: 12 }}>Diagnose</Text>
+                <Text style={{ color: bloomPalette.surface, fontFamily: Fonts.rounded, fontSize: 12 }}>
+                  Открыть стойку
+                </Text>
               </Pressable>
             </Link>
           </View>
         </View>
 
+        <View
+          style={{
+            borderRadius: 22,
+            backgroundColor: bloomPalette.surface,
+            padding: 16,
+            gap: 14,
+          }}
+        >
+          <View style={{ gap: 4 }}>
+            <Text style={{ color: bloomPalette.primaryText, fontFamily: Fonts.rounded, fontSize: 16 }}>
+              Быстрые действия
+            </Text>
+            <Text style={{ color: bloomPalette.mutedText, fontFamily: Fonts.rounded, fontSize: 13, lineHeight: 18 }}>
+              Команды уходят в очередь активной стойки и подтверждаются на ближайшем heartbeat.
+            </Text>
+          </View>
+
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            {[
+              { key: 'light' as const, label: 'Свет', icon: 'wb-sunny' as const },
+              { key: 'watering' as const, label: 'Полив', icon: 'water-drop' as const },
+              { key: 'snapshot' as const, label: 'Снимок', icon: 'sync' as const },
+            ].map((action) => (
+              <Pressable
+                key={action.key}
+                disabled={sendingCommand !== null}
+                onPress={() => {
+                  void handleQuickAction(action.key);
+                }}
+                style={{
+                  flex: 1,
+                  borderRadius: 18,
+                  backgroundColor: action.key === 'watering' ? bloomPalette.primary : bloomPalette.surfaceSoft,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  paddingVertical: 14,
+                  gap: 6,
+                  borderWidth: action.key === 'watering' ? 0 : 1,
+                  borderColor: bloomPalette.border,
+                }}
+              >
+                {sendingCommand === action.key ? (
+                  <ActivityIndicator color={action.key === 'watering' ? bloomPalette.surface : bloomPalette.primaryText} />
+                ) : (
+                  <>
+                    <MaterialIcons
+                      name={action.icon}
+                      size={20}
+                      color={action.key === 'watering' ? bloomPalette.surface : bloomPalette.primaryText}
+                    />
+                    <Text
+                      style={{
+                        color: action.key === 'watering' ? bloomPalette.surface : bloomPalette.primaryText,
+                        fontFamily: Fonts.rounded,
+                        fontSize: 13,
+                      }}
+                    >
+                      {action.label}
+                    </Text>
+                  </>
+                )}
+              </Pressable>
+            ))}
+          </View>
+
+          {feedback ? (
+            <View
+              style={{
+                borderRadius: 16,
+                backgroundColor: bloomPalette.surfaceSoft,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+              }}
+            >
+              <Text style={{ color: bloomPalette.mutedText, fontFamily: Fonts.rounded, fontSize: 13, lineHeight: 19 }}>
+                {feedback}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+
         <View style={{ gap: 14 }}>
-          <Text style={{ color: bloomPalette.primaryText, fontFamily: Fonts.rounded, fontSize: 24 }}>All Features</Text>
+          <Text style={{ color: bloomPalette.primaryText, fontFamily: Fonts.rounded, fontSize: 24 }}>
+            Состояние системы
+          </Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 16 }}>
-            {featureCards.map((card) => (
-              <Link key={card.title} href={card.href} asChild>
-                <Pressable
+            {operationalCards.map((card) => (
+              <View
+                key={card.title}
+                style={{
+                  width: '48%',
+                  minHeight: 182,
+                  borderRadius: 18,
+                  backgroundColor: '#F7F7F7',
+                  paddingHorizontal: 14,
+                  paddingTop: 14,
+                  paddingBottom: 16,
+                  gap: 10,
+                }}
+              >
+                <View
                   style={{
-                    width: '48%',
-                    minHeight: 182,
-                    borderRadius: 18,
-                    backgroundColor: '#F7F7F7',
-                    paddingHorizontal: 12,
-                    paddingTop: 14,
-                    overflow: 'hidden',
+                    width: 40,
+                    height: 40,
+                    borderRadius: 14,
+                    backgroundColor: bloomPalette.surface,
+                    alignItems: 'center',
+                    justifyContent: 'center',
                   }}
                 >
-                  <Text
-                    selectable
-                    style={{
-                      color: bloomPalette.primaryText,
-                      fontFamily: Fonts.serif,
-                      fontSize: 18,
-                    }}
-                  >
-                    {card.title}
-                  </Text>
-                  <Text
-                    selectable
-                    style={{
-                      color: bloomPalette.mutedText,
-                      fontFamily: Fonts.rounded,
-                      fontSize: 12,
-                      lineHeight: 18,
-                      marginTop: 6,
-                      maxWidth: 128,
-                    }}
-                  >
-                    {card.description}
-                  </Text>
-                  <Image
-                    source={card.image}
-                    style={{
-                      position: 'absolute',
-                      right: -6,
-                      bottom: -4,
-                      width: 114,
-                      height: 114,
-                    }}
-                    contentFit="contain"
-                  />
-                </Pressable>
-              </Link>
+                  <MaterialIcons name={card.icon} size={20} color={bloomPalette.primaryText} />
+                </View>
+                <Text
+                  selectable
+                  style={{
+                    color: bloomPalette.primaryText,
+                    fontFamily: Fonts.serif,
+                    fontSize: 18,
+                  }}
+                >
+                  {card.title}
+                </Text>
+                <Text
+                  selectable
+                  style={{
+                    color: bloomPalette.primary,
+                    fontFamily: Fonts.serif,
+                    fontSize: 24,
+                    lineHeight: 28,
+                  }}
+                >
+                  {card.value}
+                </Text>
+                <Text
+                  selectable
+                  style={{
+                    color: bloomPalette.mutedText,
+                    fontFamily: Fonts.rounded,
+                    fontSize: 12,
+                    lineHeight: 18,
+                  }}
+                >
+                  {card.description}
+                </Text>
+              </View>
             ))}
           </View>
         </View>
@@ -435,7 +600,7 @@ export default function OverviewScreen() {
           }}
         >
           <Text style={{ color: bloomPalette.primaryText, fontFamily: Fonts.rounded, fontSize: 16 }}>
-            Live greenhouse feed
+            Активные контроллеры
           </Text>
           {feedCards.map((device) => (
             <Link key={`${device.slug}-${device.name}`} href={`/device/${device.slug}`} asChild>
@@ -451,12 +616,15 @@ export default function OverviewScreen() {
                   gap: 12,
                 }}
               >
-                <View style={{ flex: 1, gap: 4 }}>
+                <View style={{ flex: 1, gap: 6 }}>
                   <Text style={{ color: bloomPalette.primaryText, fontFamily: Fonts.serif, fontSize: 18 }}>
                     {device.name}
                   </Text>
                   <Text style={{ color: bloomPalette.mutedText, fontFamily: Fonts.rounded, fontSize: 12 }}>
                     {device.lastEvent}
+                  </Text>
+                  <Text style={{ color: bloomPalette.mutedSoft, fontFamily: Fonts.rounded, fontSize: 12 }}>
+                    {device.pendingCommands} в очереди • {device.lastHeartbeat}
                   </Text>
                 </View>
                 <MaterialIcons

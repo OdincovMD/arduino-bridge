@@ -6,10 +6,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { bloomPalette } from '@/constants/bloom';
 
 const TAB_META: Record<string, React.ComponentProps<typeof MaterialIcons>['name']> = {
-  index: 'home-filled',
-  devices: 'local-florist',
-  activity: 'monitor-heart',
-  settings: 'person-outline',
+  index: 'dashboard',
+  devices: 'grid-view',
+  activity: 'query-stats',
+  settings: 'manage-accounts',
 };
 
 function TabGlyph({
@@ -133,7 +133,7 @@ export function BloomTabBar({ state, descriptors, navigation }: BottomTabBarProp
           boxShadow: '0 10px 24px rgba(31, 105, 75, 0.38)',
         }}
       >
-        <MaterialIcons name="qr-code-scanner" size={28} color={bloomPalette.surface} />
+        <MaterialIcons name="sensors" size={28} color={bloomPalette.surface} />
       </View>
     </View>
   );
