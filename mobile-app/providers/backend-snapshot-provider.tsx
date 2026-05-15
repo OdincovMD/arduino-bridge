@@ -170,17 +170,23 @@ export function BackendSnapshotProvider({ children }: { children: ReactNode }) {
 
       const activity = activityChunks
         .flatMap((chunk) =>
-          chunk.events.slice(0, 3).map((event) => ({
-            id: `${chunk.device.slug}-${event.id}`,
-            title: describeEventTitle(chunk.device.name),
-            description: describeEventPayload(event.event_name, event.payload),
-            time: new Date(event.received_at).toLocaleTimeString('ru-RU', {
-              hour: '2-digit',
-              minute: '2-digit',
-            }),
-          }))
+          chunk.events.slice(0, 3).map((event) => {
+            const receivedAt = new Date(event.received_at);
+
+            return {
+              id: `${chunk.device.slug}-${event.id}`,
+              title: describeEventTitle(chunk.device.name),
+              description: describeEventPayload(event.event_name, event.payload),
+              time: receivedAt.toLocaleTimeString('ru-RU', {
+                hour: '2-digit',
+                minute: '2-digit',
+              }),
+              timestamp: receivedAt.getTime(),
+            };
+          })
         )
-        .sort((left, right) => right.time.localeCompare(left.time));
+        .sort((left, right) => right.timestamp - left.timestamp)
+        .map(({ timestamp: _timestamp, ...item }) => item);
 
       const allCommands = activityChunks.flatMap((chunk) => chunk.commands);
       const stats = [

@@ -13,15 +13,21 @@ import { EnqueueCommandPayload, enqueueDeviceCommand } from '@/lib/api';
 import { useAuth } from '@/providers/auth-provider';
 
 export default function DeviceDetailScreen() {
-  const { slug } = useLocalSearchParams<{ slug: string }>();
+  const params = useLocalSearchParams<{ slug?: string | string[]; plant?: string | string[] }>();
   const snapshot = useBackendSnapshot();
   const { token } = useAuth();
+  const slug = Array.isArray(params.slug) ? params.slug[0] : params.slug;
+  const plantParam = Array.isArray(params.plant) ? params.plant[0] : params.plant;
   const device = snapshot.devices.find((entry) => entry.slug === slug);
   const [sendingCommand, setSendingCommand] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
-  const firstPlant = device?.plants[0];
-  const displayPlant = firstPlant ?? bloomDemoPlants[0];
-  const descriptionCopy = firstPlant
+  const requestedPlantIndex = plantParam ? Number.parseInt(plantParam, 10) : 0;
+  const selectedPlantIndex = Number.isInteger(requestedPlantIndex) && requestedPlantIndex >= 0 ? requestedPlantIndex : 0;
+  const selectedPlant = device?.plants[selectedPlantIndex];
+  const fallbackPlant = device?.plants[0];
+  const activePlantIndex = selectedPlant ? selectedPlantIndex : 0;
+  const displayPlant = selectedPlant ?? fallbackPlant ?? bloomDemoPlants[0];
+  const descriptionCopy = selectedPlant ?? fallbackPlant
     ? `${device?.lastEvent} Контур работает в режиме "${displayPlant.mode.toLowerCase()}". Проверьте влажность и при необходимости отправьте ручную команду без выхода из экрана.`
     : 'Контур ожидает первый live snapshot. Пока можно проверить связь, шаблон света и доступность ручного полива.';
 
@@ -39,7 +45,7 @@ export default function DeviceDetailScreen() {
         : action === 'watering'
           ? {
               command_name: 'WATERING_PULSE',
-              args: { PLANT: '0', DURATION: '12' },
+              args: { PLANT: `${activePlantIndex}`, DURATION: '12' },
             }
           : {
               command_name: 'GET_SNAPSHOT',

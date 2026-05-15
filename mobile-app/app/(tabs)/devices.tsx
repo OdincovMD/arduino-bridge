@@ -23,6 +23,7 @@ export default function DevicesScreen() {
         device.plants.map((plant, index) => ({
           ...plant,
           slug: device.slug,
+          plantIndex: index,
           deviceName: device.name,
           pendingCommands: device.pendingCommands,
           lightTemplate: device.lightTemplate,
@@ -37,13 +38,14 @@ export default function DevicesScreen() {
   );
   const fallbackSlug = snapshot.devices[0]?.slug ?? bloomDemoFeed[0].slug;
   const visualPlantCards = plantCards.length
-    ? plantCards
-    : bloomDemoPlants.map((plant, index) => ({
-        ...plant,
-        slug: snapshot.devices[index % Math.max(snapshot.devices.length, 1)]?.slug ?? fallbackSlug,
-        deviceName:
-          snapshot.devices[index % Math.max(snapshot.devices.length, 1)]?.name ??
-          bloomDemoFeed[index % bloomDemoFeed.length].name,
+      ? plantCards
+      : bloomDemoPlants.map((plant, index) => ({
+          ...plant,
+          slug: snapshot.devices[index % Math.max(snapshot.devices.length, 1)]?.slug ?? fallbackSlug,
+          plantIndex: index,
+          deviceName:
+            snapshot.devices[index % Math.max(snapshot.devices.length, 1)]?.name ??
+            bloomDemoFeed[index % bloomDemoFeed.length].name,
         pendingCommands: snapshot.devices[index % Math.max(snapshot.devices.length, 1)]?.pendingCommands ?? 0,
         lightTemplate: snapshot.devices[index % Math.max(snapshot.devices.length, 1)]?.lightTemplate ?? 'Утренний цикл',
         connected: snapshot.devices[index % Math.max(snapshot.devices.length, 1)]?.connected ?? true,
@@ -167,7 +169,7 @@ export default function DevicesScreen() {
       {mode === 'plants' ? (
         <View style={{ gap: 14 }}>
           {visualPlantCards.slice(0, 6).map((plant) => (
-            <Link key={`${plant.slug}-${plant.name}`} href={`/device/${plant.slug}`} asChild>
+            <Link key={`${plant.slug}-${plant.name}`} href={`/device/${plant.slug}?plant=${plant.plantIndex}`} asChild>
               <Pressable
                 style={{
                   borderRadius: 16,
