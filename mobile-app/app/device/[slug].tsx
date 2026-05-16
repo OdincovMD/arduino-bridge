@@ -1,12 +1,11 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { Image } from 'expo-image';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 
 import { bloomAssets } from '@/constants/bloom-assets';
 import { bloomPalette } from '@/constants/bloom';
-import { bloomDemoPlants } from '@/constants/bloom-demo';
 import { Fonts } from '@/constants/theme';
 import { useBackendSnapshot } from '@/hooks/use-backend-snapshot';
 import { EnqueueCommandPayload, enqueueDeviceCommand } from '@/lib/api';
@@ -19,6 +18,7 @@ export default function DeviceDetailScreen() {
   const slug = Array.isArray(params.slug) ? params.slug[0] : params.slug;
   const plantParam = Array.isArray(params.plant) ? params.plant[0] : params.plant;
   const device = snapshot.devices.find((entry) => entry.slug === slug);
+  const detail = device ? snapshot.detailsBySlug[device.slug] : undefined;
   const [sendingCommand, setSendingCommand] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const requestedPlantIndex = plantParam ? Number.parseInt(plantParam, 10) : 0;
@@ -26,10 +26,20 @@ export default function DeviceDetailScreen() {
   const selectedPlant = device?.plants[selectedPlantIndex];
   const fallbackPlant = device?.plants[0];
   const activePlantIndex = selectedPlant ? selectedPlantIndex : 0;
-  const displayPlant = selectedPlant ?? fallbackPlant ?? bloomDemoPlants[0];
+  const displayPlant = selectedPlant ?? fallbackPlant ?? {
+    name: `Зона ${activePlantIndex + 1}`,
+    mode: 'Ожидает snapshot',
+    moisture: '--',
+    levelPercent: 0,
+  };
   const descriptionCopy = selectedPlant ?? fallbackPlant
-    ? `${device?.lastEvent} Контур работает в режиме "${displayPlant.mode.toLowerCase()}". Проверьте влажность и при необходимости отправьте ручную команду без выхода из экрана.`
+    ? `${detail?.latestStateSummary ?? device?.lastEvent} Контур работает в режиме "${displayPlant.mode.toLowerCase()}". Проверьте влажность и при необходимости отправьте ручную команду без выхода из экрана.`
     : 'Контур ожидает первый live snapshot. Пока можно проверить связь, шаблон света и доступность ручного полива.';
+
+  const telemetryFeed = useMemo(
+    () => [...(detail?.states ?? []), ...(detail?.heartbeats ?? [])].slice(0, 4),
+    [detail?.heartbeats, detail?.states]
+  );
 
   async function handleQuickAction(action: 'light' | 'watering' | 'snapshot') {
     if (!token || !device) {
@@ -122,6 +132,21 @@ export default function DeviceDetailScreen() {
       icon: 'sensors' as const,
     },
   ];
+
+  const commandToneStyles = {
+    neutral: {
+      backgroundColor: bloomPalette.surfaceMuted,
+      color: bloomPalette.primaryText,
+    },
+    success: {
+      backgroundColor: '#EAF4EA',
+      color: bloomPalette.primary,
+    },
+    warning: {
+      backgroundColor: '#FFF0EF',
+      color: bloomPalette.warning,
+    },
+  } as const;
 
   return (
     <>
@@ -342,6 +367,154 @@ export default function DeviceDetailScreen() {
               </Text>
             </View>
           ) : null}
+
+          <View style={{ gap: 12 }}>
+            <Text style={{ color: bloomPalette.primaryText, fontFamily: Fonts.rounded, fontSize: 15, fontWeight: '500' }}>
+              Последние команды
+            </Text>
+            {detail?.commands.length ? (
+              detail.commands.map((command) => {
+                const tone = commandToneStyles[command.tone];
+                return (
+                  <View
+                    key={command.id}
+                    style={{
+                      borderRadius: 18,
+                      backgroundColor: bloomPalette.surface,
+                      paddingHorizontal: 14,
+                      paddingVertical: 12,
+                      gap: 8,
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
+                      <Text style={{ color: bloomPalette.primaryText, fontFamily: Fonts.serif, fontSize: 17 }}>
+                        {command.label}
+                      </Text>
+                      <Text style={{ color: bloomPalette.mutedSoft, fontFamily: Fonts.rounded, fontSize: 12 }}>
+                        {command.time}
+                      </Text>
+                    </View>
+                    <View
+                      style={{
+                        alignSelf: 'flex-start',
+                        borderRadius: 999,
+                        backgroundColor: tone.backgroundColor,
+                        paddingHorizontal: 10,
+                        paddingVertical: 6,
+                      }}
+                    >
+                      <Text style={{ color: tone.color, fontFamily: Fonts.rounded, fontSize: 12 }}>
+                        {command.statusLabel}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })
+            ) : (
+              <View
+                style={{
+                  borderRadius: 18,
+                  backgroundColor: bloomPalette.surface,
+                  paddingHorizontal: 14,
+                  paddingVertical: 12,
+                }}
+              >
+                <Text style={{ color: bloomPalette.mutedText, fontFamily: Fonts.rounded, fontSize: 13, lineHeight: 20 }}>
+                  Команды для этого контура ещё не попадали в очередь backend.
+                </Text>
+              </View>
+            )}
+          </View>
+
+          <View style={{ gap: 12 }}>
+            <Text style={{ color: bloomPalette.primaryText, fontFamily: Fonts.rounded, fontSize: 15, fontWeight: '500' }}>
+              Состояние и heartbeat
+            </Text>
+            {telemetryFeed.length ? (
+              telemetryFeed.map((entry) => (
+                <View
+                  key={entry.id}
+                  style={{
+                    borderRadius: 18,
+                    backgroundColor: bloomPalette.surface,
+                    paddingHorizontal: 14,
+                    paddingVertical: 12,
+                    gap: 6,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
+                    <Text style={{ color: bloomPalette.primaryText, fontFamily: Fonts.rounded, fontSize: 14 }}>
+                      {'label' in entry ? entry.label : 'HEARTBEAT'}
+                    </Text>
+                    <Text style={{ color: bloomPalette.mutedSoft, fontFamily: Fonts.rounded, fontSize: 12 }}>
+                      {entry.time}
+                    </Text>
+                  </View>
+                  <Text style={{ color: bloomPalette.mutedText, fontFamily: Fonts.rounded, fontSize: 13, lineHeight: 20 }}>
+                    {entry.description}
+                  </Text>
+                </View>
+              ))
+            ) : (
+              <View
+                style={{
+                  borderRadius: 18,
+                  backgroundColor: bloomPalette.surface,
+                  paddingHorizontal: 14,
+                  paddingVertical: 12,
+                }}
+              >
+                <Text style={{ color: bloomPalette.mutedText, fontFamily: Fonts.rounded, fontSize: 13, lineHeight: 20 }}>
+                  Живые state и heartbeat записи появятся после следующего цикла обмена контроллера с сервером.
+                </Text>
+              </View>
+            )}
+          </View>
+
+          <View style={{ gap: 12 }}>
+            <Text style={{ color: bloomPalette.primaryText, fontFamily: Fonts.rounded, fontSize: 15, fontWeight: '500' }}>
+              Последние события
+            </Text>
+            {detail?.events.length ? (
+              detail.events.map((event) => (
+                <View
+                  key={event.id}
+                  style={{
+                    borderRadius: 18,
+                    backgroundColor: bloomPalette.surface,
+                    paddingHorizontal: 14,
+                    paddingVertical: 12,
+                    gap: 6,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
+                    <Text style={{ color: bloomPalette.primaryText, fontFamily: Fonts.serif, fontSize: 17 }}>
+                      {event.title}
+                    </Text>
+                    <Text style={{ color: bloomPalette.mutedSoft, fontFamily: Fonts.rounded, fontSize: 12 }}>
+                      {event.time}
+                    </Text>
+                  </View>
+                  <Text style={{ color: bloomPalette.mutedText, fontFamily: Fonts.rounded, fontSize: 13, lineHeight: 20 }}>
+                    {event.description}
+                  </Text>
+                </View>
+              ))
+            ) : (
+              <View
+                style={{
+                  borderRadius: 18,
+                  backgroundColor: bloomPalette.surface,
+                  paddingHorizontal: 14,
+                  paddingVertical: 12,
+                }}
+              >
+                <Text style={{ color: bloomPalette.mutedText, fontFamily: Fonts.rounded, fontSize: 13, lineHeight: 20 }}>
+                  Пока нет событий от этого контура. После первого `EVT` лента появится автоматически.
+                </Text>
+              </View>
+            )}
+          </View>
         </View>
       </ScrollView>
     </>

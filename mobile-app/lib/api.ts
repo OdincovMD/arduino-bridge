@@ -46,6 +46,21 @@ export type BackendEvent = {
   received_at: string;
 };
 
+export type BackendStateRecord = {
+  id: number;
+  block_name: string;
+  payload: string;
+  parsed_payload: Record<string, string> | null;
+  received_at: string;
+};
+
+export type BackendHeartbeat = {
+  id: number;
+  payload: string;
+  parsed_payload: Record<string, string> | null;
+  received_at: string;
+};
+
 export type BackendCommand = {
   id: number;
   protocol_command_id: number;
@@ -156,6 +171,14 @@ export async function fetchDeviceState(token: string, slug: string): Promise<Bac
 
 export async function fetchDeviceEvents(token: string, slug: string): Promise<BackendEvent[]> {
   return fetchJson<BackendEvent[]>(`/api/v1/app/devices/${slug}/events`, token);
+}
+
+export async function fetchDeviceStates(token: string, slug: string): Promise<BackendStateRecord[]> {
+  return fetchJson<BackendStateRecord[]>(`/api/v1/app/devices/${slug}/states`, token);
+}
+
+export async function fetchDeviceHeartbeats(token: string, slug: string): Promise<BackendHeartbeat[]> {
+  return fetchJson<BackendHeartbeat[]>(`/api/v1/app/devices/${slug}/heartbeats`, token);
 }
 
 export async function fetchDeviceCommands(token: string, slug: string): Promise<BackendCommand[]> {

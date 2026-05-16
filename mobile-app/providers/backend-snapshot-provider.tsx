@@ -1,17 +1,57 @@
 import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
-import { fetchDeviceCommands, fetchDeviceEvents, fetchDevices } from '@/lib/api';
-import { mockActivity, mockCommandStats, mockDevices } from '@/lib/mock-data';
+import {
+  BackendCommand,
+  BackendEvent,
+  BackendHeartbeat,
+  BackendStateRecord,
+  fetchDeviceCommands,
+  fetchDeviceEvents,
+  fetchDeviceHeartbeats,
+  fetchDeviceStates,
+  fetchDevices,
+} from '@/lib/api';
+import { ActivityItem, DeviceCard, mockActivity, mockCommandStats, mockDevices } from '@/lib/mock-data';
 import { useAuth } from '@/providers/auth-provider';
 
-type SnapshotDevice = typeof mockDevices;
-type SnapshotActivity = typeof mockActivity;
+type SnapshotDevice = DeviceCard[];
+type SnapshotActivity = ActivityItem[];
 type SnapshotStats = typeof mockCommandStats;
+
+type SnapshotStateItem = {
+  id: string;
+  label: string;
+  description: string;
+  time: string;
+};
+
+type SnapshotHeartbeatItem = {
+  id: string;
+  description: string;
+  time: string;
+};
+
+type SnapshotCommandItem = {
+  id: string;
+  label: string;
+  statusLabel: string;
+  time: string;
+  tone: 'neutral' | 'success' | 'warning';
+};
+
+export type SnapshotDeviceDetail = {
+  events: SnapshotActivity;
+  states: SnapshotStateItem[];
+  heartbeats: SnapshotHeartbeatItem[];
+  commands: SnapshotCommandItem[];
+  latestStateSummary: string | null;
+};
 
 type BackendSnapshotValue = {
   devices: SnapshotDevice;
   activity: SnapshotActivity;
   commandStats: SnapshotStats;
+  detailsBySlug: Record<string, SnapshotDeviceDetail>;
   source: 'mock' | 'remote';
   isRefreshing: boolean;
   isInitialLoading: boolean;
@@ -26,6 +66,7 @@ const defaultValue: Omit<BackendSnapshotValue, 'refresh'> = {
   devices: mockDevices,
   activity: mockActivity,
   commandStats: mockCommandStats,
+  detailsBySlug: {},
   source: 'mock',
   isRefreshing: false,
   isInitialLoading: false,
@@ -38,6 +79,35 @@ function formatRelativeMoment(value: Date): string {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+function formatRelativeAge(value: string | null): string {
+  if (!value) {
+    return 'нет данных';
+  }
+
+  const deltaMs = Date.now() - new Date(value).getTime();
+  if (!Number.isFinite(deltaMs) || deltaMs < 0) {
+    return 'только что';
+  }
+
+  const minutes = Math.floor(deltaMs / 60000);
+  if (minutes <= 0) {
+    const seconds = Math.max(1, Math.floor(deltaMs / 1000));
+    return `${seconds} сек назад`;
+  }
+
+  if (minutes < 60) {
+    return `${minutes} мин назад`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return `${hours} ч назад`;
+  }
+
+  const days = Math.floor(hours / 24);
+  return `${days} дн назад`;
 }
 
 function parseKeyValuePayload(payload: string): Record<string, string> {
@@ -97,6 +167,115 @@ function describeEventPayload(eventName: string, payload: string): string {
   }
 }
 
+function describeStatePayload(
+  blockName: string,
+  payload: string,
+  parsedPayload: Record<string, string> | null
+): string {
+  const args = parsedPayload ?? parseKeyValuePayload(payload);
+
+  if (blockName === 'LIGHT') {
+    const state = args.STATE === 'ON' ? 'включён' : args.STATE === 'OFF' ? 'выключен' : 'неизвестен';
+    const template = args.TEMPLATE ?? args.LTPL;
+    return template ? `Свет ${state}, профиль ${template}.` : `Свет ${state}.`;
+  }
+
+  if (blockName.startsWith('PLANT')) {
+    const moisture = args.MOISTURE ? `${args.MOISTURE}%` : 'нет датчика';
+    const mode =
+      args.MODE === 'MOISTURE' ? 'по влажности' : args.MODE === 'TIMER' ? 'по таймеру' : 'без режима';
+    return `Влажность ${moisture}, режим ${mode}.`;
+  }
+
+  if (blockName === 'SYSTEM') {
+    const summary = Object.entries(args)
+      .slice(0, 3)
+      .map(([key, value]) => `${key.toLowerCase()}: ${value}`)
+      .join(' • ');
+    return summary || 'Системный блок обновлён.';
+  }
+
+  return payload.replaceAll('|', ' • ');
+}
+
+function describeHeartbeatPayload(payload: string, parsedPayload: Record<string, string> | null): string {
+  const args = parsedPayload ?? parseKeyValuePayload(payload);
+  const parts = [
+    args.RSSI ? `RSSI ${args.RSSI}` : null,
+    args.UPTIME ? `uptime ${args.UPTIME}` : null,
+    args.IP ? `IP ${args.IP}` : null,
+  ].filter(Boolean);
+
+  return parts.length ? parts.join(' • ') : payload.replaceAll('|', ' • ');
+}
+
+function describeCommandStatus(status: string): { label: string; tone: SnapshotCommandItem['tone'] } {
+  switch (status) {
+    case 'queued':
+      return { label: 'в очереди', tone: 'neutral' };
+    case 'dispatched':
+      return { label: 'отправлена', tone: 'neutral' };
+    case 'acknowledged':
+      return { label: 'подтверждена', tone: 'neutral' };
+    case 'done':
+      return { label: 'выполнена', tone: 'success' };
+    case 'error':
+      return { label: 'с ошибкой', tone: 'warning' };
+    default:
+      return { label: status, tone: 'neutral' };
+  }
+}
+
+function getCommandMoment(command: BackendCommand): string {
+  return command.completed_at ?? command.acknowledged_at ?? command.dispatched_at ?? command.queued_at;
+}
+
+function buildDetailBundle(
+  events: BackendEvent[],
+  commands: BackendCommand[],
+  states: BackendStateRecord[],
+  heartbeats: BackendHeartbeat[]
+): SnapshotDeviceDetail {
+  const mappedEvents = events.slice(0, 4).map((event) => ({
+    id: `event-${event.id}`,
+    title: event.event_name.replace(/_/g, ' '),
+    description: describeEventPayload(event.event_name, event.payload),
+    time: formatRelativeMoment(new Date(event.received_at)),
+  }));
+
+  const mappedStates = states.slice(0, 4).map((state) => ({
+    id: `state-${state.id}`,
+    label: state.block_name,
+    description: describeStatePayload(state.block_name, state.payload, state.parsed_payload),
+    time: formatRelativeMoment(new Date(state.received_at)),
+  }));
+
+  const mappedHeartbeats = heartbeats.slice(0, 3).map((heartbeat) => ({
+    id: `heartbeat-${heartbeat.id}`,
+    description: describeHeartbeatPayload(heartbeat.payload, heartbeat.parsed_payload),
+    time: formatRelativeMoment(new Date(heartbeat.received_at)),
+  }));
+
+  const mappedCommands = commands.slice(0, 4).map((command) => {
+    const status = describeCommandStatus(command.status);
+    return {
+      id: `command-${command.id}`,
+      label: command.command_name,
+      statusLabel: status.label,
+      time: formatRelativeMoment(new Date(getCommandMoment(command))),
+      tone: status.tone,
+    };
+  });
+
+  return {
+    events: mappedEvents,
+    states: mappedStates,
+    heartbeats: mappedHeartbeats,
+    commands: mappedCommands,
+    latestStateSummary: mappedStates[0]?.description ?? mappedEvents[0]?.description ?? null,
+  };
+}
+
 export function BackendSnapshotProvider({ children }: { children: ReactNode }) {
   const { token } = useAuth();
   const [snapshot, setSnapshot] = useState(defaultValue);
@@ -119,14 +298,24 @@ export function BackendSnapshotProvider({ children }: { children: ReactNode }) {
 
     try {
       const devices = await fetchDevices(token);
-      const activityChunks = await Promise.all(
-        devices.slice(0, 3).map(async (device) => {
-          const [events, commands] = await Promise.all([
+      const deviceBundles = await Promise.all(
+        devices.map(async (device) => {
+          const [events, commands, states, heartbeats] = await Promise.all([
             fetchDeviceEvents(token, device.slug).catch(() => []),
             fetchDeviceCommands(token, device.slug).catch(() => []),
+            fetchDeviceStates(token, device.slug).catch(() => []),
+            fetchDeviceHeartbeats(token, device.slug).catch(() => []),
           ]);
-          return { device, events, commands };
+
+          return { device, events, commands, states, heartbeats };
         })
+      );
+
+      const detailsBySlug = Object.fromEntries(
+        deviceBundles.map((bundle) => [
+          bundle.device.slug,
+          buildDetailBundle(bundle.events, bundle.commands, bundle.states, bundle.heartbeats),
+        ])
       );
 
       const mappedDevices = devices.map((device, index) => {
@@ -148,11 +337,13 @@ export function BackendSnapshotProvider({ children }: { children: ReactNode }) {
           };
         });
 
-        const commandBundle = activityChunks.find((chunk) => chunk.device.slug === device.slug);
-        const pendingCommands = commandBundle?.commands.filter((command) => command.status === 'queued').length ?? 0;
-        const lastEvent = commandBundle?.events[0]
-          ? describeEventPayload(commandBundle.events[0].event_name, commandBundle.events[0].payload)
-          : 'Пока всё спокойно.';
+        const bundle = deviceBundles.find((item) => item.device.slug === device.slug);
+        const pendingCommands =
+          bundle?.commands.filter((command) => ['queued', 'dispatched', 'acknowledged'].includes(command.status)).length ??
+          0;
+        const lastEvent = bundle?.events[0]
+          ? describeEventPayload(bundle.events[0].event_name, bundle.events[0].payload)
+          : detailsBySlug[device.slug]?.latestStateSummary ?? 'Пока всё спокойно.';
         const lightTemplate = lightBlock.TEMPLATE ?? lightBlock.LTPL ?? `Профиль ${index + 1}`;
 
         return {
@@ -162,25 +353,22 @@ export function BackendSnapshotProvider({ children }: { children: ReactNode }) {
           plantsOnline: plants.length,
           pendingCommands,
           lightTemplate,
-          lastHeartbeat: device.last_seen_at ? 'есть связь' : 'нет данных',
+          lastHeartbeat: formatRelativeAge(device.last_seen_at),
           lastEvent,
           plants,
         };
       });
 
-      const activity = activityChunks
-        .flatMap((chunk) =>
-          chunk.events.slice(0, 3).map((event) => {
+      const activity = deviceBundles
+        .flatMap((bundle) =>
+          bundle.events.slice(0, 3).map((event) => {
             const receivedAt = new Date(event.received_at);
 
             return {
-              id: `${chunk.device.slug}-${event.id}`,
-              title: describeEventTitle(chunk.device.name),
+              id: `${bundle.device.slug}-${event.id}`,
+              title: describeEventTitle(bundle.device.name),
               description: describeEventPayload(event.event_name, event.payload),
-              time: receivedAt.toLocaleTimeString('ru-RU', {
-                hour: '2-digit',
-                minute: '2-digit',
-              }),
+              time: formatRelativeMoment(receivedAt),
               timestamp: receivedAt.getTime(),
             };
           })
@@ -188,7 +376,7 @@ export function BackendSnapshotProvider({ children }: { children: ReactNode }) {
         .sort((left, right) => right.timestamp - left.timestamp)
         .map(({ timestamp: _timestamp, ...item }) => item);
 
-      const allCommands = activityChunks.flatMap((chunk) => chunk.commands);
+      const allCommands = deviceBundles.flatMap((bundle) => bundle.commands);
       const stats = [
         { label: 'В очереди', value: `${allCommands.filter((item) => item.status === 'queued').length}`.padStart(2, '0') },
         { label: 'Выполнено', value: `${allCommands.filter((item) => item.status === 'done').length}`.padStart(2, '0') },
@@ -199,6 +387,7 @@ export function BackendSnapshotProvider({ children }: { children: ReactNode }) {
         devices: mappedDevices.length ? mappedDevices : mockDevices,
         activity: activity.length ? activity : mockActivity,
         commandStats: stats,
+        detailsBySlug,
         source: 'remote',
         isRefreshing: false,
         isInitialLoading: false,
@@ -210,6 +399,7 @@ export function BackendSnapshotProvider({ children }: { children: ReactNode }) {
         devices: mockDevices,
         activity: mockActivity,
         commandStats: mockCommandStats,
+        detailsBySlug: {},
         source: 'mock',
         isRefreshing: false,
         isInitialLoading: false,

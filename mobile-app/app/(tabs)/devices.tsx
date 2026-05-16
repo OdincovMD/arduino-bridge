@@ -10,12 +10,9 @@ import { bloomDemoFeed, bloomDemoPlants } from '@/constants/bloom-demo';
 import { Fonts } from '@/constants/theme';
 import { useBackendSnapshot } from '@/hooks/use-backend-snapshot';
 
-const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
 export default function DevicesScreen() {
   const snapshot = useBackendSnapshot();
-  const [mode, setMode] = useState<'plants' | 'schedule'>('plants');
-  const [selectedDay, setSelectedDay] = useState('Wed');
+  const [mode, setMode] = useState<'plants' | 'telemetry'>('plants');
 
   const plantCards = useMemo(
     () =>
@@ -38,14 +35,14 @@ export default function DevicesScreen() {
   );
   const fallbackSlug = snapshot.devices[0]?.slug ?? bloomDemoFeed[0].slug;
   const visualPlantCards = plantCards.length
-      ? plantCards
-      : bloomDemoPlants.map((plant, index) => ({
-          ...plant,
-          slug: snapshot.devices[index % Math.max(snapshot.devices.length, 1)]?.slug ?? fallbackSlug,
-          plantIndex: index,
-          deviceName:
-            snapshot.devices[index % Math.max(snapshot.devices.length, 1)]?.name ??
-            bloomDemoFeed[index % bloomDemoFeed.length].name,
+    ? plantCards
+    : bloomDemoPlants.map((plant, index) => ({
+        ...plant,
+        slug: snapshot.devices[index % Math.max(snapshot.devices.length, 1)]?.slug ?? fallbackSlug,
+        plantIndex: index,
+        deviceName:
+          snapshot.devices[index % Math.max(snapshot.devices.length, 1)]?.name ??
+          bloomDemoFeed[index % bloomDemoFeed.length].name,
         pendingCommands: snapshot.devices[index % Math.max(snapshot.devices.length, 1)]?.pendingCommands ?? 0,
         lightTemplate: snapshot.devices[index % Math.max(snapshot.devices.length, 1)]?.lightTemplate ?? 'Утренний цикл',
         connected: snapshot.devices[index % Math.max(snapshot.devices.length, 1)]?.connected ?? true,
@@ -54,14 +51,35 @@ export default function DevicesScreen() {
         status: plant.levelPercent < 35 ? 'Нужна проверка' : 'Рабочая зона',
       }));
 
-  const scheduleCards = visualPlantCards.slice(0, 4).map((plant, index) => ({
-    title: plant.name,
-    greenhouse: plant.deviceName,
-    time: ['09:00', '13:30', '18:00', '21:15'][index] ?? '09:00',
-    repeat: index === 1 ? 'Каждую неделю' : 'Каждый день',
-    action: index % 2 === 0 ? 'Полив' : 'Свет',
-    profile: plant.lightTemplate,
-  }));
+  const telemetryCards = useMemo(
+    () =>
+      snapshot.devices.flatMap((device) => {
+        const detail = snapshot.detailsBySlug[device.slug];
+        const heartbeatCard = detail?.heartbeats[0]
+          ? [
+              {
+                key: `${device.slug}-${detail.heartbeats[0].id}`,
+                title: `${device.name} · heartbeat`,
+                subtitle: detail.heartbeats[0].description,
+                time: detail.heartbeats[0].time,
+                accent: device.connected ? '#ECF5ED' : '#FFF0EF',
+                kind: 'heartbeat',
+              },
+            ]
+          : [];
+        const stateCards =
+          detail?.states.slice(0, 2).map((state) => ({
+            key: `${device.slug}-${state.id}`,
+            title: `${device.name} · ${state.label}`,
+            subtitle: state.description,
+            time: state.time,
+            accent: bloomPalette.surfaceMuted,
+            kind: 'state',
+          })) ?? [];
+        return [...heartbeatCard, ...stateCards];
+      }),
+    [snapshot.detailsBySlug, snapshot.devices]
+  );
 
   return (
     <ScrollView
@@ -110,9 +128,9 @@ export default function DevicesScreen() {
       </View>
 
       <View style={{ gap: 6 }}>
-        <Text style={{ color: bloomPalette.primaryText, fontFamily: Fonts.serif, fontSize: 28 }}>Контуры и расписания</Text>
+        <Text style={{ color: bloomPalette.primaryText, fontFamily: Fonts.serif, fontSize: 28 }}>Контуры и поток</Text>
         <Text style={{ color: bloomPalette.mutedText, fontFamily: Fonts.rounded, fontSize: 13, lineHeight: 19 }}>
-          Переключайтесь между зонами и графиком, чтобы быстро понять, где работает автоматический полив, а где нужна ручная команда.
+          Здесь больше нет локально выдуманного расписания: переключайтесь между зонами и живой телеметрией контроллеров.
         </Text>
       </View>
 
@@ -145,23 +163,23 @@ export default function DevicesScreen() {
           </Text>
         </Pressable>
         <Pressable
-          onPress={() => setMode('schedule')}
+          onPress={() => setMode('telemetry')}
           style={{
             flex: 1,
             borderRadius: 12,
-            backgroundColor: mode === 'schedule' ? bloomPalette.primary : 'transparent',
+            backgroundColor: mode === 'telemetry' ? bloomPalette.primary : 'transparent',
             paddingVertical: 12,
             alignItems: 'center',
           }}
         >
           <Text
             style={{
-              color: mode === 'schedule' ? bloomPalette.surface : bloomPalette.primaryText,
+              color: mode === 'telemetry' ? bloomPalette.surface : bloomPalette.primaryText,
               fontFamily: Fonts.rounded,
               fontSize: 14,
             }}
           >
-            Расписание
+            Поток
           </Text>
         </Pressable>
       </View>
@@ -273,101 +291,70 @@ export default function DevicesScreen() {
         </View>
       ) : (
         <>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
-            {dayLabels.map((day) => (
-              <Pressable
-                key={day}
-                onPress={() => setSelectedDay(day)}
-                style={{
-                  width: 40,
-                  height: 56,
-                  borderRadius: 18,
-                  backgroundColor: selectedDay === day ? bloomPalette.primary : bloomPalette.surface,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Text
-                  style={{
-                    color: selectedDay === day ? bloomPalette.surface : bloomPalette.primaryText,
-                    fontFamily: Fonts.rounded,
-                    fontSize: 12,
-                  }}
-                >
-                  {day}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-
           <Text style={{ color: bloomPalette.primaryText, fontFamily: Fonts.rounded, fontSize: 18 }}>
-            {selectedDay === 'Wed' ? 'Среда' : selectedDay}
+            Живые heartbeat и state-блоки
           </Text>
 
           <View style={{ gap: 14 }}>
-            {scheduleCards.map((item) => (
+            {telemetryCards.length ? (
+              telemetryCards.map((item) => (
+                <View
+                  key={item.key}
+                  style={{
+                    borderRadius: 18,
+                    backgroundColor: bloomPalette.surface,
+                    padding: 16,
+                    gap: 10,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <View style={{ gap: 4, flex: 1, paddingRight: 12 }}>
+                      <Text style={{ color: bloomPalette.primary, fontFamily: Fonts.serif, fontSize: 18 }}>
+                        {item.title}
+                      </Text>
+                      <Text style={{ color: bloomPalette.mutedText, fontFamily: Fonts.rounded, fontSize: 13 }}>
+                        {item.subtitle}
+                      </Text>
+                    </View>
+                    <Text style={{ color: bloomPalette.primaryText, fontFamily: Fonts.rounded, fontSize: 13 }}>
+                      {item.time}
+                    </Text>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    <View
+                      style={{
+                        borderRadius: 999,
+                        backgroundColor: item.accent,
+                        paddingHorizontal: 10,
+                        paddingVertical: 6,
+                      }}
+                    >
+                      <Text style={{ color: bloomPalette.primaryText, fontFamily: Fonts.rounded, fontSize: 12 }}>
+                        {item.kind}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              ))
+            ) : (
               <View
-                key={`${item.title}-${item.time}`}
                 style={{
                   borderRadius: 18,
                   backgroundColor: bloomPalette.surface,
-                  padding: 16,
-                  gap: 10,
+                  padding: 18,
+                  gap: 8,
                 }}
               >
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <View style={{ gap: 4, flex: 1, paddingRight: 12 }}>
-                    <Text style={{ color: bloomPalette.primary, fontFamily: Fonts.serif, fontSize: 18 }}>
-                      {item.title}
-                    </Text>
-                    <Text style={{ color: bloomPalette.mutedText, fontFamily: Fonts.rounded, fontSize: 13 }}>
-                      {item.greenhouse}
-                    </Text>
-                  </View>
-                  <Text style={{ color: bloomPalette.primaryText, fontFamily: Fonts.rounded, fontSize: 13 }}>
-                    {item.time}
-                  </Text>
-                </View>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                  <View
-                    style={{
-                      borderRadius: 999,
-                      backgroundColor: bloomPalette.surfaceMuted,
-                      paddingHorizontal: 10,
-                      paddingVertical: 6,
-                    }}
-                  >
-                    <Text style={{ color: bloomPalette.primaryText, fontFamily: Fonts.rounded, fontSize: 12 }}>
-                      {item.repeat}
-                    </Text>
-                  </View>
-                  <View
-                    style={{
-                      borderRadius: 999,
-                      backgroundColor: bloomPalette.surfaceMuted,
-                      paddingHorizontal: 10,
-                      paddingVertical: 6,
-                    }}
-                  >
-                    <Text style={{ color: bloomPalette.primaryText, fontFamily: Fonts.rounded, fontSize: 12 }}>
-                      {item.action}
-                    </Text>
-                  </View>
-                  <View
-                    style={{
-                      borderRadius: 999,
-                      backgroundColor: '#ECF5ED',
-                      paddingHorizontal: 10,
-                      paddingVertical: 6,
-                    }}
-                  >
-                    <Text style={{ color: bloomPalette.primaryText, fontFamily: Fonts.rounded, fontSize: 12 }}>
-                      {item.profile}
-                    </Text>
-                  </View>
-                </View>
+                <Text style={{ color: bloomPalette.primaryText, fontFamily: Fonts.rounded, fontSize: 15 }}>
+                  Поток телеметрии пока пуст
+                </Text>
+                <Text style={{ color: bloomPalette.mutedText, fontFamily: Fonts.rounded, fontSize: 13, lineHeight: 19 }}>
+                  Как только контроллер отдаст heartbeat или очередной `STATE`, здесь появятся реальные записи вместо
+                  локальной симуляции.
+                </Text>
               </View>
-            ))}
+            )}
           </View>
 
           <View style={{ alignItems: 'flex-end' }}>
@@ -382,7 +369,7 @@ export default function DevicesScreen() {
                 boxShadow: `0 12px 26px ${bloomPalette.shadow}`,
               }}
             >
-              <MaterialIcons name="edit-calendar" size={22} color={bloomPalette.surface} />
+              <MaterialIcons name="memory" size={22} color={bloomPalette.surface} />
             </View>
           </View>
         </>
