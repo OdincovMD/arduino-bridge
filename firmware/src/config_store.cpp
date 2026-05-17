@@ -46,8 +46,8 @@ void ConfigStore::setDefaults(PersistedConfig& config) {
   config.schemaVersion = AppConfig::CONFIG_SCHEMA_VERSION;
   strncpy(config.deviceId, "greenhouse-01", sizeof(config.deviceId) - 1);
   strncpy(config.deviceToken, "CHANGEME123456", sizeof(config.deviceToken) - 1);
-  strncpy(config.wifiSsid, "YOUR_WIFI", sizeof(config.wifiSsid) - 1);
-  strncpy(config.wifiPassword, "YOUR_PASS", sizeof(config.wifiPassword) - 1);
+  strncpy(config.wifiSsid, "Blackhooool", sizeof(config.wifiSsid) - 1);
+  strncpy(config.wifiPassword, "Netperesdachee", sizeof(config.wifiPassword) - 1);
   strncpy(config.serverHost, "127.0.0.1", sizeof(config.serverHost) - 1);
   config.serverPort = 8080;
   config.lightTimerEnabled = 1;

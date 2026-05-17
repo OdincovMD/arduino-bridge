@@ -38,5 +38,5 @@ static const uint8_t MAX_ARG_KEY_LEN = 16;
 static const uint8_t MAX_ARG_VALUE_LEN = 24;
 
 static const uint16_t CONFIG_MAGIC = 0xB10D;
-static const uint16_t CONFIG_SCHEMA_VERSION = 1;
+static const uint16_t CONFIG_SCHEMA_VERSION = 2;
 }  // namespace AppConfig
