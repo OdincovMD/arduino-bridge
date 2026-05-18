@@ -96,7 +96,6 @@ struct LightState {
 } __attribute__((packed));
 
 struct PlantConfig {
-  char name[AppConfig::MAX_PLANT_NAME_LEN];
   uint8_t mode;
   uint16_t moistureThreshold;
 } __attribute__((packed));
@@ -119,7 +118,6 @@ struct PersistedConfig {
   uint16_t serverPort;
   uint8_t lightTimerEnabled;
   int8_t activeLightTemplateIndex;
-  LightTemplate lightTemplates[AppConfig::MAX_LIGHT_TEMPLATES];
   uint8_t lightTemplateCount;
   PlantConfig plantConfigs[AppConfig::MAX_PLANTS];
   uint8_t plantCount;

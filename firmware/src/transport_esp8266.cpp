@@ -3,6 +3,31 @@
 #include <stdio.h>
 #include <string.h>
 
+namespace {
+
+size_t digitCount(size_t value) {
+  size_t digits = 1;
+  while (value >= 10) {
+    value /= 10;
+    ++digits;
+  }
+  return digits;
+}
+
+size_t getRequestLength(const char* host, const char* path, const char* token) {
+  return (sizeof("GET ") - 1) + strlen(path) + (sizeof(" HTTP/1.1\r\nHost: ") - 1) + strlen(host) +
+         (sizeof("\r\nX-Device-Token: ") - 1) + strlen(token) + (sizeof("\r\nConnection: close\r\n\r\n") - 1);
+}
+
+size_t postRequestLength(const char* host, const char* path, const char* token, size_t bodyLength) {
+  return (sizeof("POST ") - 1) + strlen(path) + (sizeof(" HTTP/1.1\r\nHost: ") - 1) + strlen(host) +
+         (sizeof("\r\nContent-Type: text/plain\r\nX-Device-Token: ") - 1) + strlen(token) +
+         (sizeof("\r\nContent-Length: ") - 1) + digitCount(bodyLength) + (sizeof("\r\nConnection: close\r\n\r\n") - 1) +
+         bodyLength;
+}
+
+}  // namespace
+
 TransportEsp8266::TransportEsp8266(uint8_t rxPin, uint8_t txPin, Stream* debugStream)
     : serial_(rxPin, txPin), debug_(debugStream), state_(CONNECTION_DOWN), lastRssi_(0) {}
 
@@ -41,12 +66,18 @@ bool TransportEsp8266::ensureWiFiConnected(const char* ssid, const char* passwor
 
 bool TransportEsp8266::httpGet(const char* host, uint16_t port, const char* path, const char* token, char* responseBody,
                                size_t responseSize) {
-  char request[AppConfig::MAX_MESSAGE_LEN * 2];
-  snprintf(request, sizeof(request),
-           "GET %s HTTP/1.1\r\nHost: %s\r\nX-Device-Token: %s\r\nConnection: close\r\n\r\n", path, host, token);
-
   if (!openTcpConnection(host, port)) return false;
-  if (!sendPayload(request)) return false;
+  if (!startSend(getRequestLength(host, path, token))) return false;
+
+  serial_.print(F("GET "));
+  serial_.print(path);
+  serial_.print(F(" HTTP/1.1\r\nHost: "));
+  serial_.print(host);
+  serial_.print(F("\r\nX-Device-Token: "));
+  serial_.print(token);
+  serial_.print(F("\r\nConnection: close\r\n\r\n"));
+
+  if (!finishSend()) return false;
   if (!readHttpResponse(responseBody, responseSize, AppConfig::HTTP_TIMEOUT_MS)) return false;
   state_ = CONNECTION_SERVER_UP;
   return true;
@@ -55,14 +86,21 @@ bool TransportEsp8266::httpGet(const char* host, uint16_t port, const char* path
 bool TransportEsp8266::httpPost(const char* host, uint16_t port, const char* path, const char* token, const char* body,
                                 char* responseBody, size_t responseSize) {
   const size_t bodyLength = strlen(body);
-  char request[AppConfig::MAX_MESSAGE_LEN * 2];
-  snprintf(request, sizeof(request),
-           "POST %s HTTP/1.1\r\nHost: %s\r\nContent-Type: text/plain\r\nX-Device-Token: %s\r\nContent-Length: %u\r\n"
-           "Connection: close\r\n\r\n%s",
-           path, host, token, static_cast<unsigned>(bodyLength), body);
-
   if (!openTcpConnection(host, port)) return false;
-  if (!sendPayload(request)) return false;
+  if (!startSend(postRequestLength(host, path, token, bodyLength))) return false;
+
+  serial_.print(F("POST "));
+  serial_.print(path);
+  serial_.print(F(" HTTP/1.1\r\nHost: "));
+  serial_.print(host);
+  serial_.print(F("\r\nContent-Type: text/plain\r\nX-Device-Token: "));
+  serial_.print(token);
+  serial_.print(F("\r\nContent-Length: "));
+  serial_.print(static_cast<unsigned>(bodyLength));
+  serial_.print(F("\r\nConnection: close\r\n\r\n"));
+  serial_.print(body);
+
+  if (!finishSend()) return false;
   if (!readHttpResponse(responseBody, responseSize, AppConfig::HTTP_TIMEOUT_MS)) return false;
   state_ = CONNECTION_SERVER_UP;
   return true;
@@ -97,8 +135,20 @@ bool TransportEsp8266::sendBasicCommand(const char* command, const char* expecte
     }
   }
 
-  debugLine(buffer);
-  return strstr(buffer, expected) != NULL;
+  const bool ok = strstr(buffer, expected) != NULL;
+  if (!ok && debug_ != NULL) {
+    debug_->print(F("[AT_FAIL] "));
+    debug_->print(command);
+    if (buffer[0] != '\0') {
+      debug_->print(F(" => "));
+      debug_->println(buffer);
+    } else {
+      debug_->println(F(" => <timeout>"));
+    }
+  } else {
+    debugLine(buffer);
+  }
+  return ok;
 }
 
 bool TransportEsp8266::openTcpConnection(const char* host, uint16_t port) {
@@ -111,14 +161,13 @@ bool TransportEsp8266::openTcpConnection(const char* host, uint16_t port) {
   return true;
 }
 
-bool TransportEsp8266::sendPayload(const char* payload) {
+bool TransportEsp8266::startSend(size_t payloadLength) {
   char command[32];
-  snprintf(command, sizeof(command), "AT+CIPSEND=%u", static_cast<unsigned>(strlen(payload)));
-  if (!sendBasicCommand(command, ">", 4000)) {
-    return false;
-  }
+  snprintf(command, sizeof(command), "AT+CIPSEND=%u", static_cast<unsigned>(payloadLength));
+  return sendBasicCommand(command, ">", 4000);
+}
 
-  serial_.print(payload);
+bool TransportEsp8266::finishSend() {
   const unsigned long startedAt = millis();
   char buffer[AppConfig::MAX_MESSAGE_LEN];
   size_t length = 0;
@@ -162,11 +211,12 @@ bool TransportEsp8266::readHttpResponse(char* responseBody, size_t responseSize,
     }
   }
 
-  debugLine(payload);
   stripHeaders(payload);
   strncpy(responseBody, payload, responseSize - 1);
   responseBody[responseSize - 1] = '\0';
   closeConnection();
+  delay(AppConfig::COMMAND_GRACE_PERIOD_MS);
+  clearInput();
   return true;
 }
 

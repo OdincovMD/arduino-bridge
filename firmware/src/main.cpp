@@ -39,6 +39,13 @@ bool publishEvent(const char* eventName, const char* extra) {
   return postMessage("event", message);
 }
 
+void enqueueEvent(const char* eventName, const char* extra) {
+  char message[AppConfig::MAX_EVENT_MESSAGE_LEN];
+  if (Protocol::buildEvent(eventName, extra, message, sizeof(message))) {
+    eventLog.push(message);
+  }
+}
+
 bool publishStateSnapshot() {
   char message[AppConfig::MAX_MESSAGE_LEN];
   bool ok = Protocol::buildStateLight(runtimeState, message, sizeof(message)) && postMessage("state", message);
@@ -89,14 +96,17 @@ void sendHeartbeat() {
   char response[AppConfig::MAX_MESSAGE_LEN];
   char message[AppConfig::MAX_MESSAGE_LEN];
   buildDevicePath("heartbeat", path, sizeof(path));
+  Serial.println(F("[HB]"));
 
   if (Protocol::buildPing(runtimeState, transport.lastRssi(), message, sizeof(message)) &&
       transport.httpPost(persistedConfig.serverHost, persistedConfig.serverPort, path, persistedConfig.deviceToken, message,
                          response, sizeof(response))) {
     runtimeState.serverReachable = 1;
+    Serial.println(F("[HB_OK]"));
   } else {
     runtimeState.serverReachable = 0;
     runtimeState.lastError = ERROR_TRANSPORT;
+    Serial.println(F("[HB_FAIL]"));
   }
   runtimeState.lastHeartbeatAt = millis();
 }
@@ -116,17 +126,20 @@ void pollCommands() {
   char path[80];
   char response[AppConfig::MAX_MESSAGE_LEN];
   buildDevicePath("commands", path, sizeof(path));
+  Serial.println(F("[POLL]"));
 
   if (!transport.httpGet(persistedConfig.serverHost, persistedConfig.serverPort, path, persistedConfig.deviceToken, response,
                          sizeof(response))) {
     runtimeState.serverReachable = 0;
     runtimeState.lastError = ERROR_TRANSPORT;
     runtimeState.lastPollAt = millis();
+    Serial.println(F("[POLL_FAIL]"));
     return;
   }
 
   runtimeState.serverReachable = 1;
   runtimeState.lastPollAt = millis();
+  Serial.println(F("[POLL_OK]"));
 
   if (response[0] == '\0') {
     return;
@@ -159,10 +172,7 @@ void pollCommands() {
   }
 
   if (result.eventName[0] != '\0') {
-    char eventMessage[AppConfig::MAX_MESSAGE_LEN];
-    if (Protocol::buildEvent(result.eventName, "", eventMessage, sizeof(eventMessage))) {
-      eventLog.push(eventMessage);
-    }
+    enqueueEvent(result.eventName, "");
   }
 
   if (result.snapshotRequested || result.stateChanged) {
@@ -199,13 +209,20 @@ void setup() {
     lastWiFiAttemptAt = millis();
   }
 
-  publishEvent("DEVICE_BOOT", "");
+  runtimeState.lastHeartbeatAt = millis();
+  runtimeState.lastPollAt = millis();
+  enqueueEvent("DEVICE_BOOT", "");
   markStateDirty(runtimeState);
-  publishStateSnapshot();
 }
 
 void loop() {
   const unsigned long now = millis();
+  const unsigned long serverRetryInterval =
+      runtimeState.serverReachable ? AppConfig::POLL_INTERVAL_MS : AppConfig::SERVER_RETRY_INTERVAL_MS;
+  const unsigned long heartbeatInterval =
+      runtimeState.serverReachable ? AppConfig::HEARTBEAT_INTERVAL_MS : AppConfig::SERVER_RETRY_INTERVAL_MS;
+  bool networkActivity = false;
+
   if (!runtimeState.wifiConnected && now - lastWiFiAttemptAt >= AppConfig::WIFI_RETRY_INTERVAL_MS) {
     lastWiFiAttemptAt = now;
     runtimeState.wifiConnected = transport.ensureWiFiConnected(persistedConfig.wifiSsid, persistedConfig.wifiPassword) ? 1 : 0;
@@ -213,18 +230,23 @@ void loop() {
 
   tickPlaceholders();
 
-  if (now - runtimeState.lastHeartbeatAt >= AppConfig::HEARTBEAT_INTERVAL_MS) {
+  if (now - runtimeState.lastHeartbeatAt >= heartbeatInterval) {
     sendHeartbeat();
+    networkActivity = true;
   }
 
-  if (now - runtimeState.lastPollAt >= AppConfig::POLL_INTERVAL_MS) {
+  if (!networkActivity && now - runtimeState.lastPollAt >= serverRetryInterval) {
     pollCommands();
+    networkActivity = true;
   }
 
-  if (runtimeState.stateDirty) {
+  if (!networkActivity && runtimeState.serverReachable && runtimeState.stateDirty) {
     publishStateSnapshot();
+    networkActivity = true;
   }
 
-  flushEventQueue();
+  if (!networkActivity && runtimeState.serverReachable) {
+    flushEventQueue();
+  }
   delay(10);
 }

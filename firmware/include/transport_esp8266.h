@@ -22,7 +22,8 @@ class TransportEsp8266 {
  private:
   bool sendBasicCommand(const char* command, const char* expected, unsigned long timeoutMs);
   bool openTcpConnection(const char* host, uint16_t port);
-  bool sendPayload(const char* payload);
+  bool startSend(size_t payloadLength);
+  bool finishSend();
   bool readHttpResponse(char* responseBody, size_t responseSize, unsigned long timeoutMs);
   bool closeConnection();
   void clearInput();

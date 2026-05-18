@@ -1,5 +1,7 @@
 #pragma once
 
+#include <avr/pgmspace.h>
+
 #include "types.h"
 
 class Protocol {
@@ -17,5 +19,5 @@ class Protocol {
   static bool buildStatePlant(const RuntimeState& state, const PersistedConfig& config, uint8_t plantIndex, char* out,
                               size_t outSize);
   static bool buildStateSystem(const RuntimeState& state, char* out, size_t outSize);
-  static const char* errorCodeToString(ErrorCode errorCode);
+  static PGM_P errorCodeToString(ErrorCode errorCode);
 };

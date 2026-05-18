@@ -48,25 +48,15 @@ void ConfigStore::setDefaults(PersistedConfig& config) {
   strncpy(config.deviceToken, "CHANGEME123456", sizeof(config.deviceToken) - 1);
   strncpy(config.wifiSsid, "Blackhooool", sizeof(config.wifiSsid) - 1);
   strncpy(config.wifiPassword, "Netperesdachee", sizeof(config.wifiPassword) - 1);
-  strncpy(config.serverHost, "127.0.0.1", sizeof(config.serverHost) - 1);
+  strncpy(config.serverHost, "192.168.3.6", sizeof(config.serverHost) - 1);
   config.serverPort = 8080;
   config.lightTimerEnabled = 1;
   config.activeLightTemplateIndex = 0;
   config.lightTemplateCount = 1;
-  strncpy(config.lightTemplates[0].name, "DAY", sizeof(config.lightTemplates[0].name) - 1);
-  config.lightTemplates[0].intervalCount = 2;
-  config.lightTemplates[0].intervals[0].startMinute = 480;
-  config.lightTemplates[0].intervals[0].endMinute = 1320;
-  config.lightTemplates[0].intervals[0].lightOn = 1;
-  config.lightTemplates[0].intervals[1].startMinute = 1320;
-  config.lightTemplates[0].intervals[1].endMinute = 1440;
-  config.lightTemplates[0].intervals[1].lightOn = 0;
 
   config.plantCount = 2;
-  strncpy(config.plantConfigs[0].name, "Plant_1", sizeof(config.plantConfigs[0].name) - 1);
   config.plantConfigs[0].mode = PLANT_MODE_MOISTURE;
   config.plantConfigs[0].moistureThreshold = 450;
-  strncpy(config.plantConfigs[1].name, "Plant_2", sizeof(config.plantConfigs[1].name) - 1);
   config.plantConfigs[1].mode = PLANT_MODE_TIMER;
   config.plantConfigs[1].moistureThreshold = 550;
 }

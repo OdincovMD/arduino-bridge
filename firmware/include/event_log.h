@@ -13,8 +13,8 @@ class EventLog {
   void clear();
 
  private:
-  char buffer_[AppConfig::MAX_LOG_EVENTS][AppConfig::MAX_MESSAGE_LEN];
-  uint8_t head_;
-  uint8_t tail_;
-  uint8_t count_;
+  // Uno cannot afford a multi-kilobyte event ring buffer, so keep only
+  // the latest unsent event.
+  char buffer_[AppConfig::MAX_EVENT_MESSAGE_LEN];
+  uint8_t hasItem_;
 };

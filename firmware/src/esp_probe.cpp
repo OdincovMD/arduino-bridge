@@ -18,15 +18,29 @@ void flushEspInput() {
   }
 }
 
-bool waitForResponse(unsigned long timeoutMs) {
+bool containsReadableAtResponse(const char* buffer) {
+  return strstr(buffer, "OK") != nullptr || strstr(buffer, "ERROR") != nullptr || strstr(buffer, "ready") != nullptr ||
+         strstr(buffer, "WIFI") != nullptr || strstr(buffer, "+CWJAP") != nullptr || strstr(buffer, "busy") != nullptr;
+}
+
+bool readResponse(unsigned long timeoutMs, char* buffer, size_t bufferSize) {
   const unsigned long startedAt = millis();
   bool sawData = false;
+  size_t length = 0;
+
+  if (buffer != nullptr && bufferSize > 0) {
+    buffer[0] = '\0';
+  }
 
   while (millis() - startedAt < timeoutMs) {
     while (espSerial.available()) {
       const char c = static_cast<char>(espSerial.read());
       Serial.write(c);
       sawData = true;
+      if (buffer != nullptr && bufferSize > 0 && length + 1 < bufferSize) {
+        buffer[length++] = c;
+        buffer[length] = '\0';
+      }
     }
   }
 
@@ -44,7 +58,11 @@ bool sendCommand(const __FlashStringHelper* label, const char* command, unsigned
   flushEspInput();
   espSerial.print(command);
   espSerial.print("\r\n");
-  return waitForResponse(timeoutMs);
+  char response[192];
+  if (!readResponse(timeoutMs, response, sizeof(response))) {
+    return false;
+  }
+  return containsReadableAtResponse(response);
 }
 
 bool tryProbeAtBaud(long baud) {
@@ -69,6 +87,10 @@ bool tryProbeAtBaud(long baud) {
   sendCommand(F("AT+CWJAP"), joinCommand, 20000);
   sendCommand(F("AT+CWJAP?"), "AT+CWJAP?", 2500);
   sendCommand(F("AT+CIFSR"), "AT+CIFSR", 2500);
+
+  if (baud == 115200) {
+    sendCommand(F("AT+UART_DEF=9600"), "AT+UART_DEF=9600,8,1,0,0", 4000);
+  }
   return true;
 }
 
@@ -80,7 +102,8 @@ void captureBootLogAtBaud(long baud) {
   Serial.print(F("=== Listening for boot log at "));
   Serial.print(baud);
   Serial.println(F(" baud ==="));
-  waitForResponse(1200);
+  char response[192];
+  readResponse(1200, response, sizeof(response));
 }
 
 }  // namespace
@@ -104,9 +127,12 @@ void setup() {
 
   if (!gotResponse) {
     Serial.println();
-    Serial.println(F("ESP did not answer on 9600 or 115200."));
+    Serial.println(F("ESP did not return a readable AT response on tested bauds."));
     Serial.println(F("Check 3.3V power, common GND, RX/TX, and level shifting on ESP RX."));
   } else {
+    Serial.println();
+    Serial.println(F("=== Verifying ESP at 9600 after config ==="));
+    tryProbeAtBaud(9600);
     Serial.println(F("Probe finished."));
   }
 }
