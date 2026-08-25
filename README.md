@@ -89,12 +89,6 @@ tuna http 8080 --domain=your-domain.example
 
 Открыть каталог `firmware/` как `PlatformIO` проект и собрать прошивку для `uno`.
 
-Перед реальной прошивкой стоит проверить:
-
-- пины `SoftwareSerial` для `ESP-01`;
-- baud rate модуля;
-- `SSID`, `password`, `server host`, `server port`;
-- нужен ли отдельный `RTC`.
 
 ## Важные допущения
 
