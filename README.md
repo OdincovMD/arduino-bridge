@@ -79,11 +79,7 @@ docker compose up --build
 - public entrypoint via nginx: `http://127.0.0.1:8080`
 - OpenAPI: `http://127.0.0.1:8080/docs`
 
-Для туннеля:
 
-```bash
-tuna http 8080 --domain=your-domain.example
-```
 
 ### 2. Firmware
 
